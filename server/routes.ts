@@ -16,10 +16,19 @@ const upload = multer({
     const allowedImageTypes = /^image\/(jpeg|jpg|png|gif|webp|bmp|tiff)$/i;
     const allowedVideoTypes = /^video\/(mp4|webm|mov|avi|mkv|quicktime|x-msvideo|x-matroska)$/i;
     
-    if (allowedImageTypes.test(file.mimetype) || allowedVideoTypes.test(file.mimetype)) {
+    console.log(`File upload: ${file.originalname}, MIME type: ${file.mimetype}`);
+    
+    // Also check for common alternative MIME types
+    const isVideo = allowedVideoTypes.test(file.mimetype) || 
+                   file.mimetype === 'application/mp4' ||
+                   file.mimetype === 'video/x-mp4' ||
+                   (file.mimetype === 'application/octet-stream' && file.originalname.match(/\.(mp4|webm|mov|avi|mkv)$/i));
+    
+    if (allowedImageTypes.test(file.mimetype) || isVideo) {
       cb(null, true);
     } else {
-      cb(new Error('Only image files (JPEG, PNG, GIF, WebP, BMP, TIFF) and video files (MP4, WebM, MOV, AVI, MKV) are allowed'));
+      console.log(`Rejected file: ${file.originalname} with MIME type: ${file.mimetype}`);
+      cb(new Error(`Only image files (JPEG, PNG, GIF, WebP, BMP, TIFF) and video files (MP4, WebM, MOV, AVI, MKV) are allowed. Got: ${file.mimetype}`));
     }
   }
 });
@@ -39,7 +48,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Get the first file for analysis
       const file = files[0];
       const isImage = file.mimetype.startsWith('image/');
-      const isVideo = file.mimetype.startsWith('video/');
+      const isVideo = file.mimetype.startsWith('video/') || 
+                     file.mimetype === 'application/mp4' ||
+                     file.mimetype === 'video/x-mp4' ||
+                     (file.mimetype === 'application/octet-stream' && file.originalname.match(/\.(mp4|webm|mov|avi|mkv)$/i));
+      
+      console.log(`Processing file: ${file.originalname}, MIME: ${file.mimetype}, isImage: ${isImage}, isVideo: ${isVideo}`);
       
       if (!isImage && !isVideo) {
         return res.status(400).json({ error: 'Invalid file type' });

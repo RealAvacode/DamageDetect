@@ -335,7 +335,7 @@ export default function Home() {
                 onFilesSelected={handleFilesSelected}
                 maxFiles={5}
                 disabled={isAssessing}
-                acceptedTypes="all"
+                acceptedTypes="both"
               />
               
               {selectedFiles.length > 0 && !assessmentResult && (
