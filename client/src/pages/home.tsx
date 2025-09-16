@@ -68,63 +68,192 @@ export default function Home() {
     handleStartAssessment();
   };
 
-  const handleExportReport = (assessment: AssessmentData) => {
-    // Generate a comprehensive report
-    const reportData = {
-      reportTitle: "Laptop Damage Assessment Report",
-      generatedDate: new Date().toLocaleString(),
-      assessment: {
-        grade: assessment.grade,
-        confidence: Math.round(assessment.confidence * 100),
-        overallCondition: assessment.overallCondition,
-        processingTime: assessment.processingTime,
-        damageTypes: assessment.damageTypes,
-        detailedFindings: assessment.detailedFindings
+  const handleExportReport = async (assessment: AssessmentData) => {
+    try {
+      // Dynamically import jsPDF to avoid SSR issues
+      const { jsPDF } = await import('jspdf');
+      
+      const doc = new jsPDF();
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
+      let yPosition = 20;
+
+      // Helper function to add text with word wrapping
+      const addWrappedText = (text: string, x: number, y: number, maxWidth: number, fontSize = 12) => {
+        doc.setFontSize(fontSize);
+        const lines = doc.splitTextToSize(text, maxWidth);
+        doc.text(lines, x, y);
+        return y + (lines.length * fontSize * 0.4);
+      };
+
+      // Title
+      doc.setFontSize(20);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Laptop Damage Assessment Report', pageWidth / 2, yPosition, { align: 'center' });
+      yPosition += 15;
+
+      // Generated date
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth / 2, yPosition, { align: 'center' });
+      yPosition += 20;
+
+      // Add laptop image if available
+      if (assessment.imageAnalyzed) {
+        try {
+          // Create a canvas to resize and process the image
+          const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          const img = new Image();
+          
+          await new Promise((resolve, reject) => {
+            img.onload = () => {
+              // Calculate dimensions to fit within PDF
+              const maxWidth = 120;
+              const maxHeight = 80;
+              let { width, height } = img;
+              
+              if (width > maxWidth) {
+                height = (height * maxWidth) / width;
+                width = maxWidth;
+              }
+              if (height > maxHeight) {
+                width = (width * maxHeight) / height;
+                height = maxHeight;
+              }
+
+              canvas.width = width;
+              canvas.height = height;
+              ctx?.drawImage(img, 0, 0, width, height);
+              
+              // Add image to PDF
+              const imgData = canvas.toDataURL('image/jpeg', 0.8);
+              doc.addImage(imgData, 'JPEG', (pageWidth - width) / 2, yPosition, width, height);
+              resolve(null);
+            };
+            img.onerror = reject;
+            img.src = assessment.imageAnalyzed;
+          });
+          
+          yPosition += 90;
+        } catch (error) {
+          console.warn('Could not add image to PDF:', error);
+        }
       }
-    };
 
-    // Create formatted text report
-    const reportContent = `
-${reportData.reportTitle}
-${'='.repeat(50)}
+      // Assessment Summary
+      doc.setFontSize(16);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Assessment Summary', 20, yPosition);
+      yPosition += 10;
 
-Generated: ${reportData.generatedDate}
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'normal');
+      
+      // Grade with color coding
+      const gradeColors: Record<string, [number, number, number]> = {
+        'A': [34, 197, 94], // green
+        'B': [245, 158, 11], // amber
+        'C': [245, 158, 11], // amber
+        'D': [239, 68, 68] // red
+      };
+      
+      doc.setTextColor(...(gradeColors[assessment.grade] || [0, 0, 0]));
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Grade: ${assessment.grade}`, 20, yPosition);
+      
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
+      doc.text(`Confidence: ${Math.round(assessment.confidence * 100)}%`, 80, yPosition);
+      yPosition += 8;
+      
+      doc.text(`Processing Time: ${assessment.processingTime}s`, 20, yPosition);
+      yPosition += 15;
 
-ASSESSMENT SUMMARY
-------------------
-Grade: ${reportData.assessment.grade}
-Confidence: ${reportData.assessment.confidence}%
-Processing Time: ${reportData.assessment.processingTime}s
+      // Overall Condition
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Overall Condition', 20, yPosition);
+      yPosition += 8;
 
-OVERALL CONDITION
------------------
-${reportData.assessment.overallCondition}
+      doc.setFontSize(11);
+      doc.setFont('helvetica', 'normal');
+      yPosition = addWrappedText(assessment.overallCondition, 20, yPosition, pageWidth - 40, 11);
+      yPosition += 10;
 
-DAMAGE TYPES IDENTIFIED
------------------------
-${reportData.assessment.damageTypes.map(type => `• ${type}`).join('\n')}
+      // Damage Types
+      if (assessment.damageTypes.length > 0) {
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Damage Types Identified', 20, yPosition);
+        yPosition += 8;
 
-DETAILED FINDINGS
------------------
-${reportData.assessment.detailedFindings.map((finding, index) => `
-${index + 1}. ${finding.category} (${finding.severity} Severity)
-   ${finding.description}
-`).join('')}
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        assessment.damageTypes.forEach(type => {
+          doc.text(`• ${type}`, 25, yPosition);
+          yPosition += 6;
+        });
+        yPosition += 5;
+      }
 
----
-Report generated by Laptop Assessment System
-`;
+      // Detailed Findings
+      if (assessment.detailedFindings.length > 0) {
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Detailed Findings', 20, yPosition);
+        yPosition += 8;
 
-    // Create and download the file
-    const blob = new Blob([reportContent], { type: 'text/plain' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `laptop-assessment-${reportData.assessment.grade}-${Date.now()}.txt`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+        assessment.detailedFindings.forEach((finding, index) => {
+          // Check if we need a new page
+          if (yPosition > pageHeight - 40) {
+            doc.addPage();
+            yPosition = 20;
+          }
+
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.text(`${index + 1}. ${finding.category}`, 20, yPosition);
+          
+          // Severity badge color
+          const severityColors: Record<string, [number, number, number]> = {
+            'Low': [34, 197, 94],
+            'Medium': [245, 158, 11],
+            'High': [239, 68, 68]
+          };
+          
+          doc.setTextColor(...(severityColors[finding.severity] || [0, 0, 0]));
+          doc.text(`(${finding.severity})`, 120, yPosition);
+          doc.setTextColor(0, 0, 0);
+          yPosition += 8;
+
+          doc.setFontSize(11);
+          doc.setFont('helvetica', 'normal');
+          yPosition = addWrappedText(finding.description, 25, yPosition, pageWidth - 50, 11);
+          yPosition += 8;
+        });
+      }
+
+      // Footer
+      if (yPosition > pageHeight - 30) {
+        doc.addPage();
+        yPosition = pageHeight - 20;
+      } else {
+        yPosition = pageHeight - 20;
+      }
+      
+      doc.setFontSize(8);
+      doc.setTextColor(128, 128, 128);
+      doc.text('Generated by Laptop Assessment System', pageWidth / 2, yPosition, { align: 'center' });
+
+      // Save the PDF
+      const fileName = `laptop-assessment-${assessment.grade}-${Date.now()}.pdf`;
+      doc.save(fileName);
+
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      alert('Failed to generate PDF report. Please try again.');
+    }
   };
 
   return (
