@@ -1,0 +1,160 @@
+import { useState } from "react";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import ImageUploader from "@/components/ImageUploader";
+import AssessmentResult, { AssessmentData } from "@/components/AssessmentResult";
+import { Upload, Zap, Database, Search } from "lucide-react";
+
+export default function Home() {
+  const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const [isAssessing, setIsAssessing] = useState(false);
+  const [assessmentResult, setAssessmentResult] = useState<AssessmentData | null>(null);
+
+  const handleImagesSelected = (files: File[]) => {
+    setSelectedImages(files);
+    setAssessmentResult(null);
+  };
+
+  const handleStartAssessment = async () => {
+    if (selectedImages.length === 0) return;
+    
+    setIsAssessing(true);
+    
+    // todo: remove mock functionality - replace with actual AI assessment
+    setTimeout(() => {
+      const mockResult: AssessmentData = {
+        grade: "B",
+        confidence: 0.87,
+        damageTypes: ["Surface Scratches", "Corner Wear"],
+        overallCondition: "Good condition laptop with light usage wear. Suitable for business use with minor cosmetic imperfections.",
+        detailedFindings: [
+          {
+            category: "Display Lid",
+            severity: "Low",
+            description: "Minor scratches visible on the lid surface, primarily on the left corner."
+          },
+          {
+            category: "Base/Keyboard Area",
+            severity: "Medium", 
+            description: "Moderate wear around palmrest area with some key shine."
+          }
+        ],
+        processingTime: 3.2,
+        imageAnalyzed: URL.createObjectURL(selectedImages[0])
+      };
+      
+      setAssessmentResult(mockResult);
+      setIsAssessing(false);
+    }, 3000);
+  };
+
+  const handleRetryAssessment = () => {
+    setAssessmentResult(null);
+    handleStartAssessment();
+  };
+
+  return (
+    <div className="container mx-auto px-4 py-8 max-w-4xl">
+      {/* Header */}
+      <div className="text-center mb-8">
+        <h1 className="text-3xl font-bold mb-2">Laptop Damage Assessment</h1>
+        <p className="text-muted-foreground">
+          Upload laptop images for AI-powered condition analysis and quality grading
+        </p>
+      </div>
+
+      {/* Features Overview */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+        <Card className="text-center p-4">
+          <Upload className="h-8 w-8 mx-auto mb-2 text-chart-4" />
+          <h3 className="font-medium mb-1">Upload Images</h3>
+          <p className="text-sm text-muted-foreground">Drag & drop or select laptop photos</p>
+        </Card>
+        <Card className="text-center p-4">
+          <Zap className="h-8 w-8 mx-auto mb-2 text-chart-2" />
+          <h3 className="font-medium mb-1">AI Analysis</h3>
+          <p className="text-sm text-muted-foreground">Advanced damage detection & grading</p>
+        </Card>
+        <Card className="text-center p-4">
+          <Database className="h-8 w-8 mx-auto mb-2 text-chart-1" />
+          <h3 className="font-medium mb-1">Searchable Database</h3>
+          <p className="text-sm text-muted-foreground">Store & retrieve assessment records</p>
+        </Card>
+      </div>
+
+      {/* Assessment Workflow */}
+      <Tabs defaultValue="upload" className="w-full">
+        <TabsList className="grid w-full grid-cols-2">
+          <TabsTrigger value="upload" data-testid="upload-tab">Upload & Assess</TabsTrigger>
+          <TabsTrigger value="search" data-testid="search-tab">
+            <Search className="h-4 w-4 mr-1" />
+            Search Records
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="upload" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Upload Laptop Images</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <ImageUploader
+                onImagesSelected={handleImagesSelected}
+                maxFiles={5}
+                disabled={isAssessing}
+              />
+              
+              {selectedImages.length > 0 && !assessmentResult && (
+                <div className="mt-4 pt-4 border-t">
+                  <Button 
+                    onClick={handleStartAssessment}
+                    disabled={isAssessing}
+                    className="w-full"
+                    size="lg"
+                    data-testid="start-assessment"
+                  >
+                    {isAssessing ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                        Analyzing Images...
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="h-4 w-4 mr-2" />
+                        Start AI Assessment
+                      </>
+                    )}
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {assessmentResult && (
+            <AssessmentResult 
+              assessment={assessmentResult}
+              onRetry={handleRetryAssessment}
+              onExportReport={() => console.log('Export report')}
+            />
+          )}
+        </TabsContent>
+
+        <TabsContent value="search" className="space-y-6">
+          <Card>
+            <CardContent className="p-8 text-center">
+              <Search className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
+              <h3 className="text-xl font-semibold mb-2">Search Database</h3>
+              <p className="text-muted-foreground mb-4">
+                Search and browse previously assessed laptops. This feature will be available once you start creating assessment records.
+              </p>
+              <Button variant="outline" disabled>
+                Browse Assessment Records
+              </Button>
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
+    </div>
+  );
+}
