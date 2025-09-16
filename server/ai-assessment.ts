@@ -79,7 +79,7 @@ Be thorough but concise. Provide realistic confidence scores based on image qual
           ]
         }
       ],
-      max_tokens: 1000,
+      max_completion_tokens: 1000,
       temperature: 0.1,
       response_format: { type: "json_object" }
     });
