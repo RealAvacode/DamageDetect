@@ -67,8 +67,6 @@ export class DatabaseStorage implements IStorage {
   }
 
   async searchAssessments(filters: AssessmentSearchFilters): Promise<Assessment[]> {
-    let query = db.select().from(assessments);
-
     const conditions = [];
     
     // Filter by grades
@@ -94,10 +92,17 @@ export class DatabaseStorage implements IStorage {
     }
 
     if (conditions.length > 0) {
-      query = query.where(and(...conditions));
+      return await db
+        .select()
+        .from(assessments)
+        .where(and(...conditions))
+        .orderBy(desc(assessments.assessmentDate));
     }
 
-    return await query.orderBy(desc(assessments.assessmentDate));
+    return await db
+      .select()
+      .from(assessments)
+      .orderBy(desc(assessments.assessmentDate));
   }
 
   async updateAssessment(id: string, updates: Partial<InsertAssessment>): Promise<Assessment | undefined> {

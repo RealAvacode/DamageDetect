@@ -23,6 +23,10 @@ export const assessments = pgTable("assessments", {
   imageUrl: text("image_url"),
   processingTime: real("processing_time"), // Time taken for AI processing
   assessmentDate: timestamp("assessment_date", { withTimezone: true }).notNull().defaultNow(),
+  fileType: text("file_type"), // 'image' or 'video'
+  originalFileName: text("original_file_name"), // Original uploaded filename
+  mimeType: text("mime_type"), // MIME type of uploaded file
+  fileSize: real("file_size"), // File size in bytes
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({

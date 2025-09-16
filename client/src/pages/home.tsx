@@ -2,28 +2,28 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import ImageUploader from "@/components/ImageUploader";
+import MediaUploader from "@/components/ImageUploader";
 import AssessmentResult, { AssessmentData } from "@/components/AssessmentResult";
 import { Upload, Zap, Database, Search } from "lucide-react";
 
 export default function Home() {
-  const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isAssessing, setIsAssessing] = useState(false);
   const [assessmentResult, setAssessmentResult] = useState<AssessmentData | null>(null);
 
-  const handleImagesSelected = (files: File[]) => {
-    setSelectedImages(files);
+  const handleFilesSelected = (files: File[]) => {
+    setSelectedFiles(files);
     setAssessmentResult(null);
   };
 
   const handleStartAssessment = async () => {
-    if (selectedImages.length === 0) return;
+    if (selectedFiles.length === 0) return;
     
     setIsAssessing(true);
     
     try {
       const formData = new FormData();
-      selectedImages.forEach(file => {
+      selectedFiles.forEach(file => {
         formData.append('images', file);
       });
 
@@ -47,7 +47,7 @@ export default function Home() {
           overallCondition: result.assessment.damageDescription || result.overallCondition,
           detailedFindings: result.assessment.detailedFindings || result.detailedFindings || [],
           processingTime: result.assessment.processingTime,
-          imageAnalyzed: URL.createObjectURL(selectedImages[0])
+          imageAnalyzed: URL.createObjectURL(selectedFiles[0])
         };
         
         setAssessmentResult(assessmentData);
@@ -301,13 +301,14 @@ export default function Home() {
               <CardTitle>Upload Laptop Images</CardTitle>
             </CardHeader>
             <CardContent>
-              <ImageUploader
-                onImagesSelected={handleImagesSelected}
+              <MediaUploader
+                onFilesSelected={handleFilesSelected}
                 maxFiles={5}
                 disabled={isAssessing}
+                acceptedTypes="images"
               />
               
-              {selectedImages.length > 0 && !assessmentResult && (
+              {selectedFiles.length > 0 && !assessmentResult && (
                 <div className="mt-4 pt-4 border-t">
                   <Button 
                     onClick={handleStartAssessment}

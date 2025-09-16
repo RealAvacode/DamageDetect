@@ -2,21 +2,24 @@ import type { Express } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
 import { storage } from "./storage";
-import { assessLaptopDamage, fileToBase64 } from "./ai-assessment";
+import { assessLaptopDamage, assessLaptopDamageFromVideo, fileToBase64 } from "./ai-assessment";
 import { insertAssessmentSchema } from "@shared/schema";
 
 // Configure multer for file uploads
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB limit
+    fileSize: 50 * 1024 * 1024, // 50MB limit for videos
   },
   fileFilter: (req, file, cb) => {
-    // Only allow image files
-    if (file.mimetype.startsWith('image/')) {
+    // Allow both image and video files
+    const allowedImageTypes = /^image\/(jpeg|jpg|png|gif|webp|bmp|tiff)$/i;
+    const allowedVideoTypes = /^video\/(mp4|webm|mov|avi|mkv|quicktime|x-msvideo|x-matroska)$/i;
+    
+    if (allowedImageTypes.test(file.mimetype) || allowedVideoTypes.test(file.mimetype)) {
       cb(null, true);
     } else {
-      cb(new Error('Only image files are allowed'));
+      cb(new Error('Only image files (JPEG, PNG, GIF, WebP, BMP, TIFF) and video files (MP4, WebM, MOV, AVI, MKV) are allowed'));
     }
   }
 });
@@ -24,21 +27,51 @@ const upload = multer({
 export async function registerRoutes(app: Express): Promise<Server> {
   // Assessment routes
   
-  // Upload and assess laptop images
-  app.post('/api/assessments', upload.array('images', 5), async (req, res) => {
+  // Upload and assess laptop images/videos
+  app.post('/api/assessments', upload.array('files', 5), async (req, res) => {
     try {
       const files = req.files as Express.Multer.File[];
       
       if (!files || files.length === 0) {
-        return res.status(400).json({ error: 'No images uploaded' });
+        return res.status(400).json({ error: 'No files uploaded' });
       }
 
-      // For now, analyze the first image
-      const imageFile = files[0];
-      const imageBase64 = fileToBase64(imageFile.buffer);
-
-      // Perform AI assessment
-      const aiResult = await assessLaptopDamage(imageBase64);
+      // Get the first file for analysis
+      const file = files[0];
+      const isImage = file.mimetype.startsWith('image/');
+      const isVideo = file.mimetype.startsWith('video/');
+      
+      if (!isImage && !isVideo) {
+        return res.status(400).json({ error: 'Invalid file type' });
+      }
+      
+      let aiResult;
+      
+      if (isImage) {
+        // Process image file
+        const imageBase64 = fileToBase64(file.buffer);
+        aiResult = await assessLaptopDamage(imageBase64);
+      } else {
+        // Process video file using frame extraction and AI analysis
+        try {
+          aiResult = await assessLaptopDamageFromVideo(file.buffer);
+        } catch (videoError) {
+          console.error('Video processing failed:', videoError);
+          // Fallback assessment for video processing failures
+          aiResult = {
+            grade: 'C' as const,
+            confidence: 0.3,
+            overallCondition: `Video processing failed: ${videoError instanceof Error ? videoError.message : 'Unknown error'}`,
+            damageTypes: ['Video Processing Error'],
+            detailedFindings: [{
+              category: 'Overall Structure' as const,
+              severity: 'Medium' as const,
+              description: `Video assessment could not be completed automatically. Error: ${videoError instanceof Error ? videoError.message : 'Unknown error'}. Manual review required.`
+            }],
+            processingTime: 0.1
+          };
+        }
+      }
 
       // Create assessment record
       const assessmentData = {
@@ -51,6 +84,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         detailedFindings: aiResult.detailedFindings,
         damageTypes: aiResult.damageTypes,
         imageUrl: null, // TODO: Store in object storage
+        fileType: isImage ? 'image' : 'video',
+        originalFileName: file.originalname,
+        mimeType: file.mimetype,
+        fileSize: file.size,
         processingTime: aiResult.processingTime
       };
 
