@@ -6,6 +6,31 @@ import { tmpdir } from 'os';
 
 const execAsync = promisify(exec);
 
+/**
+ * Safely parse a fraction string like "30/1" or "25000/1001"
+ */
+function parseFraction(fractionStr: string): number {
+  if (!fractionStr || typeof fractionStr !== 'string') {
+    return 0;
+  }
+  
+  const parts = fractionStr.split('/');
+  if (parts.length !== 2) {
+    // If it's not a fraction, try to parse as number
+    const num = parseFloat(fractionStr);
+    return isNaN(num) ? 0 : num;
+  }
+  
+  const numerator = parseFloat(parts[0]);
+  const denominator = parseFloat(parts[1]);
+  
+  if (isNaN(numerator) || isNaN(denominator) || denominator === 0) {
+    return 0;
+  }
+  
+  return numerator / denominator;
+}
+
 export interface VideoFrameExtractionResult {
   success: boolean;
   frames: Buffer[];
@@ -130,7 +155,7 @@ async function getVideoMetadata(videoPath: string): Promise<{
       duration: parseFloat(metadata.format.duration) || 0,
       width: videoStream.width || 0,
       height: videoStream.height || 0,
-      fps: eval(videoStream.r_frame_rate) || 0 // Parse fraction like "30/1"
+      fps: parseFraction(videoStream.r_frame_rate) || 0 // Safely parse fraction like "30/1"
     };
     
   } catch (error) {

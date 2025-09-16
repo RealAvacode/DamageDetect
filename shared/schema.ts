@@ -27,6 +27,12 @@ export const assessments = pgTable("assessments", {
   originalFileName: text("original_file_name"), // Original uploaded filename
   mimeType: text("mime_type"), // MIME type of uploaded file
   fileSize: real("file_size"), // File size in bytes
+  // Video metadata fields
+  videoDuration: real("video_duration"), // Video duration in seconds
+  videoWidth: real("video_width"), // Video width in pixels
+  videoHeight: real("video_height"), // Video height in pixels
+  videoFps: real("video_fps"), // Video frames per second
+  framesAnalyzed: real("frames_analyzed"), // Number of frames extracted and analyzed
 });
 
 export const insertUserSchema = createInsertSchema(users).pick({

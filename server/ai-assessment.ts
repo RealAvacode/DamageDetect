@@ -1,6 +1,7 @@
 import OpenAI from 'openai';
 import { InsertAssessment } from '@shared/schema';
 import { extractVideoFrames, checkFFmpegAvailability, VideoFrameExtractionResult } from './video-utils';
+import { z } from 'zod';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -15,6 +16,33 @@ export interface DetailedFinding {
   category: string;
   severity: 'Low' | 'Medium' | 'High';
   description: string;
+}
+
+// Validation schema for AI assessment responses
+const detailedFindingSchema = z.object({
+  category: z.string(),
+  severity: z.enum(['Low', 'Medium', 'High']),
+  description: z.string()
+});
+
+const aiAssessmentResponseSchema = z.object({
+  grade: z.enum(['A', 'B', 'C', 'D']),
+  confidence: z.number().min(0).max(1),
+  overallCondition: z.string(),
+  damageTypes: z.array(z.string()),
+  detailedFindings: z.array(detailedFindingSchema)
+});
+
+/**
+ * Validate AI assessment response against expected schema
+ */
+function validateAIResponse(response: any): z.infer<typeof aiAssessmentResponseSchema> {
+  try {
+    return aiAssessmentResponseSchema.parse(response);
+  } catch (error) {
+    console.error('AI response validation failed:', error);
+    throw new Error(`Invalid AI response structure: ${error instanceof Error ? error.message : 'Unknown validation error'}`);
+  }
 }
 
 export interface AIAssessmentResult {
@@ -87,7 +115,7 @@ Be thorough but concise. Provide realistic confidence scores based on image qual
           ]
         }
       ],
-      max_completion_tokens: 1000,
+      max_tokens: 1000,
       temperature: 0.1,
       response_format: { type: "json_object" }
     });
@@ -101,10 +129,13 @@ Be thorough but concise. Provide realistic confidence scores based on image qual
 
     try {
       // Parse JSON response (should be clean JSON due to response_format)
-      const result = JSON.parse(content);
+      const rawResult = JSON.parse(content);
+      
+      // Validate the response structure
+      const validatedResult = validateAIResponse(rawResult);
 
       return {
-        ...result,
+        ...validatedResult,
         processingTime
       };
     } catch (parseError) {
@@ -192,7 +223,7 @@ Note: Confidence should reflect both the assessment certainty and the limitation
           ]
         }
       ],
-      max_completion_tokens: 1000,
+      max_tokens: 1000,
       temperature: 0.1,
       response_format: { type: "json_object" }
     });
@@ -205,10 +236,13 @@ Note: Confidence should reflect both the assessment certainty and the limitation
     }
 
     try {
-      const result = JSON.parse(content);
+      const rawResult = JSON.parse(content);
+      
+      // Validate the response structure
+      const validatedResult = validateAIResponse(rawResult);
 
       return {
-        ...result,
+        ...validatedResult,
         processingTime,
         videoMetadata: {
           duration: frameResult.metadata?.duration || 0,

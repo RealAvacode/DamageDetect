@@ -102,7 +102,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         originalFileName: file.originalname,
         mimeType: file.mimetype,
         fileSize: file.size,
-        processingTime: aiResult.processingTime
+        processingTime: aiResult.processingTime,
+        // Video metadata fields (null for images)
+        videoDuration: aiResult.videoMetadata?.duration || null,
+        videoWidth: aiResult.videoMetadata?.width || null,
+        videoHeight: aiResult.videoMetadata?.height || null,
+        videoFps: aiResult.videoMetadata?.fps || null,
+        framesAnalyzed: aiResult.videoMetadata?.framesAnalyzed || null
       };
 
       const assessment = await storage.createAssessment(assessmentData);
