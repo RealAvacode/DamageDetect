@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
 import { storage } from "./storage";
@@ -34,10 +34,39 @@ const upload = multer({
 });
 
 export async function registerRoutes(app: Express): Promise<Server> {
+  // Multer error handling middleware
+  const handleMulterError = (error: any, req: Request, res: Response, next: NextFunction) => {
+    if (error) {
+      if (error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ 
+          error: 'File too large', 
+          message: `File size must be less than 50MB. Your file is ${Math.round(error.field?.size / (1024 * 1024) || 0)}MB.`
+        });
+      }
+      if (error.code === 'LIMIT_FILE_COUNT') {
+        return res.status(400).json({ 
+          error: 'Too many files', 
+          message: 'Maximum 5 files allowed per upload.'
+        });
+      }
+      if (error.message.includes('Only image files') || error.message.includes('Only video files')) {
+        return res.status(400).json({ 
+          error: 'Invalid file type', 
+          message: error.message 
+        });
+      }
+      return res.status(400).json({ 
+        error: 'File upload error', 
+        message: error.message || 'Unknown upload error'
+      });
+    }
+    next();
+  };
+
   // Assessment routes
   
   // Upload and assess laptop images/videos
-  app.post('/api/assessments', upload.array('files', 5), async (req, res) => {
+  app.post('/api/assessments', upload.array('files', 5), handleMulterError, async (req: Request, res: Response) => {
     try {
       const files = req.files as Express.Multer.File[];
       
