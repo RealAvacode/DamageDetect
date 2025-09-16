@@ -21,32 +21,46 @@ export default function Home() {
     
     setIsAssessing(true);
     
-    // todo: remove mock functionality - replace with actual AI assessment
-    setTimeout(() => {
-      const mockResult: AssessmentData = {
-        grade: "B",
-        confidence: 0.87,
-        damageTypes: ["Surface Scratches", "Corner Wear"],
-        overallCondition: "Good condition laptop with light usage wear. Suitable for business use with minor cosmetic imperfections.",
-        detailedFindings: [
-          {
-            category: "Display Lid",
-            severity: "Low",
-            description: "Minor scratches visible on the lid surface, primarily on the left corner."
-          },
-          {
-            category: "Base/Keyboard Area",
-            severity: "Medium", 
-            description: "Moderate wear around palmrest area with some key shine."
-          }
-        ],
-        processingTime: 3.2,
-        imageAnalyzed: URL.createObjectURL(selectedImages[0])
-      };
+    try {
+      const formData = new FormData();
+      selectedImages.forEach(file => {
+        formData.append('images', file);
+      });
+
+      const response = await fetch('/api/assessments', {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Assessment failed');
+      }
+
+      const result = await response.json();
       
-      setAssessmentResult(mockResult);
+      if (result.success) {
+        const assessmentData: AssessmentData = {
+          grade: result.assessment.grade,
+          confidence: result.assessment.confidence,
+          damageTypes: result.assessment.damageTypes || [],
+          overallCondition: result.assessment.damageDescription || result.overallCondition,
+          detailedFindings: result.assessment.detailedFindings || result.detailedFindings || [],
+          processingTime: result.assessment.processingTime,
+          imageAnalyzed: URL.createObjectURL(selectedImages[0])
+        };
+        
+        setAssessmentResult(assessmentData);
+      } else {
+        throw new Error('Assessment failed');
+      }
+    } catch (error) {
+      console.error('Assessment error:', error);
+      // Show error to user - for now just log, but could add toast notification
+      alert(`Assessment failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
       setIsAssessing(false);
-    }, 3000);
+    }
   };
 
   const handleRetryAssessment = () => {

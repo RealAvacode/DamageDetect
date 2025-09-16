@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent } from "@/components/ui/card";
 import SearchFilter from "@/components/SearchFilter";
 import LaptopCard, { LaptopRecord } from "@/components/LaptopCard";
@@ -6,8 +6,48 @@ import { Grade } from "@/components/GradeBadge";
 import { Search, Database } from "lucide-react";
 
 export default function SearchPage() {
-  // todo: remove mock functionality
-  const [mockLaptops] = useState<LaptopRecord[]>([
+  const [laptops, setLaptops] = useState<LaptopRecord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  
+  // Load assessments on component mount
+  useEffect(() => {
+    loadAssessments();
+  }, []);
+
+  // Update filtered laptops when real data loads
+  useEffect(() => {
+    const dataToShow = laptops.length > 0 ? laptops : mockLaptops;
+    setFilteredLaptops(dataToShow);
+  }, [laptops]);
+
+  const loadAssessments = async () => {
+    setIsLoading(true);
+    try {
+      const response = await fetch('/api/assessments');
+      if (response.ok) {
+        const assessments = await response.json();
+        const laptopRecords: LaptopRecord[] = assessments.map((assessment: any) => ({
+          id: assessment.id,
+          sku: assessment.sku || 'Unknown',
+          brand: assessment.brand || undefined,
+          model: assessment.model || undefined,
+          grade: assessment.grade,
+          assessmentDate: new Date(assessment.assessmentDate).toLocaleDateString(),
+          damageDescription: assessment.damageDescription || 'No description available',
+          imageUrl: assessment.imageUrl || undefined,
+          confidence: assessment.confidence
+        }));
+        setLaptops(laptopRecords);
+      }
+    } catch (error) {
+      console.error('Failed to load assessments:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+  
+  // Mock data for demonstration (remove when database has data)
+  const mockLaptops: LaptopRecord[] = [
     {
       id: "1",
       sku: "LT001",
@@ -59,18 +99,23 @@ export default function SearchPage() {
       grade: "D",
       assessmentDate: "2024-01-11", 
       damageDescription: "Heavy damage: cracked screen bezel, multiple dents, worn keyboard",
+      imageUrl: "https://via.placeholder.com/300x200/f3f4f6/9ca3af?text=ZenBook",
       confidence: 0.89
     },
     {
       id: "6",
       sku: "LT006",
+      brand: "Unknown",
+      model: "Unknown",
       grade: "PENDING",
       assessmentDate: "2024-01-16",
-      damageDescription: "Assessment in progress..."
+      damageDescription: "Assessment in progress...",
+      imageUrl: "https://via.placeholder.com/300x200/f3f4f6/9ca3af?text=Processing",
+      confidence: 0.0
     }
-  ]);
+  ];
 
-  const [filteredLaptops, setFilteredLaptops] = useState<LaptopRecord[]>(mockLaptops);
+  const [filteredLaptops, setFilteredLaptops] = useState<LaptopRecord[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedGrades, setSelectedGrades] = useState<Grade[]>([]);
 
@@ -90,7 +135,9 @@ export default function SearchPage() {
   };
 
   const applyFilters = (query: string, grades: Grade[]) => {
-    let filtered = mockLaptops;
+    // Use real data if available, fallback to mock data for demonstration
+    const dataToFilter = laptops.length > 0 ? laptops : mockLaptops;
+    let filtered = dataToFilter;
 
     // Apply search query filter
     if (query.trim()) {
