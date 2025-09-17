@@ -40,7 +40,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (error.code === 'LIMIT_FILE_SIZE') {
         return res.status(413).json({ 
           error: 'File too large', 
-          message: `File size must be less than 50MB. Your file is ${Math.round(error.field?.size / (1024 * 1024) || 0)}MB.`
+          message: 'File size must be less than 50MB. Please choose a smaller file.'
         });
       }
       if (error.code === 'LIMIT_FILE_COUNT') {
