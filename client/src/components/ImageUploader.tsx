@@ -81,7 +81,7 @@ export default function MediaUploader({
   };
 
   const getAcceptTypes = () => {
-    const imageTypes = { 'image/*': ['.jpeg', '.jpg', '.png', '.webp', '.gif'] };
+    const imageTypes = { 'image/*': ['.jpeg', '.jpg', '.png', '.webp', '.gif', '.heic', '.heif'] };
     const videoTypes = { 'video/*': ['.mp4', '.webm', '.mov', '.avi', '.mkv'] };
     
     if (acceptedTypes === 'images') return imageTypes;
@@ -117,13 +117,13 @@ export default function MediaUploader({
               <>
                 <p><span className="font-medium">Click to upload</span> or drag and drop</p>
                 {acceptedTypes === 'images' && (
-                  <p className="text-muted-foreground">PNG, JPG, WEBP up to 10MB each</p>
+                  <p className="text-muted-foreground">PNG, JPG, WEBP, HEIC up to 10MB each</p>
                 )}
                 {acceptedTypes === 'videos' && (
                   <p className="text-muted-foreground">MP4, WEBM, MOV up to 50MB each</p>
                 )}
                 {acceptedTypes === 'both' && (
-                  <p className="text-muted-foreground">Images (PNG, JPG, WEBP) or Videos (MP4, WEBM, MOV)</p>
+                  <p className="text-muted-foreground">Images (PNG, JPG, WEBP, HEIC) or Videos (MP4, WEBM, MOV)</p>
                 )}
                 <p className="text-muted-foreground">Maximum {maxFiles} files</p>
               </>

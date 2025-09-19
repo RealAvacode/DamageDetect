@@ -14,22 +14,26 @@ const upload = multer({
   },
   fileFilter: (req, file, cb) => {
     // Allow both image and video files
-    const allowedImageTypes = /^image\/(jpeg|jpg|png|gif|webp|bmp|tiff)$/i;
+    const allowedImageTypes = /^image\/(jpeg|jpg|png|gif|webp|bmp|tiff|heic|heif)$/i;
     const allowedVideoTypes = /^video\/(mp4|webm|mov|avi|mkv|quicktime|x-msvideo|x-matroska)$/i;
     
     console.log(`File upload: ${file.originalname}, MIME type: ${file.mimetype}`);
     
-    // Also check for common alternative MIME types
+    // Also check for common alternative MIME types and HEIC files
     const isVideo = allowedVideoTypes.test(file.mimetype) || 
                    file.mimetype === 'application/mp4' ||
                    file.mimetype === 'video/x-mp4' ||
                    (file.mimetype === 'application/octet-stream' && file.originalname.match(/\.(mp4|webm|mov|avi|mkv)$/i));
     
-    if (allowedImageTypes.test(file.mimetype) || isVideo) {
+    const isImage = allowedImageTypes.test(file.mimetype) ||
+                   // Handle HEIC files that may appear as application/octet-stream
+                   (file.mimetype === 'application/octet-stream' && file.originalname.match(/\.(heic|heif)$/i));
+    
+    if (isImage || isVideo) {
       cb(null, true);
     } else {
       console.log(`Rejected file: ${file.originalname} with MIME type: ${file.mimetype}`);
-      cb(new Error(`Only image files (JPEG, PNG, GIF, WebP, BMP, TIFF) and video files (MP4, WebM, MOV, AVI, MKV) are allowed. Got: ${file.mimetype}`));
+      cb(new Error(`Only image files (JPEG, PNG, GIF, WebP, BMP, TIFF, HEIC) and video files (MP4, WebM, MOV, AVI, MKV) are allowed. Got: ${file.mimetype}`));
     }
   }
 });
