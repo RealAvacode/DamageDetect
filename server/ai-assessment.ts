@@ -2,6 +2,7 @@ import OpenAI from 'openai';
 import { InsertAssessment } from '@shared/schema';
 import { extractVideoFrames, checkFFmpegAvailability, VideoFrameExtractionResult } from './video-utils';
 import { z } from 'zod';
+import sharp from 'sharp';
 
 const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY,
@@ -76,10 +77,31 @@ export async function assessLaptopDamage(imageBase64: string, mimeType: string =
     throw new Error('Image data is too small or corrupted. Please upload a clear, high-resolution image of the laptop.');
   }
 
-  // Ensure MIME type is supported by OpenAI Vision API
-  const supportedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif'];
-  if (!supportedMimeTypes.includes(mimeType.toLowerCase())) {
-    throw new Error(`Image format '${mimeType}' is not supported. Please upload a JPEG, PNG, GIF, WebP, or HEIC image.`);
+  // Convert HEIC files to JPEG for OpenAI compatibility
+  let processedImageBase64 = imageBase64;
+  let processedMimeType = mimeType;
+  
+  if (mimeType.toLowerCase() === 'image/heic' || mimeType.toLowerCase() === 'image/heif') {
+    try {
+      console.log('Converting HEIC/HEIF to JPEG for OpenAI compatibility...');
+      const imageBuffer = Buffer.from(imageBase64, 'base64');
+      const jpegBuffer = await sharp(imageBuffer)
+        .jpeg({ quality: 90 }) // High quality JPEG conversion
+        .toBuffer();
+      
+      processedImageBase64 = jpegBuffer.toString('base64');
+      processedMimeType = 'image/jpeg';
+      console.log('HEIC conversion successful. New JPEG size:', processedImageBase64.length);
+    } catch (conversionError) {
+      console.error('HEIC conversion failed:', conversionError);
+      throw new Error('HEIC image conversion failed. Please try converting your HEIC file to JPEG manually, or use a different image format.');
+    }
+  }
+
+  // Ensure MIME type is supported by OpenAI Vision API (after potential conversion)
+  const openAISupportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+  if (!openAISupportedTypes.includes(processedMimeType.toLowerCase())) {
+    throw new Error(`Image format '${processedMimeType}' is not supported by the AI vision system. Please upload a JPEG, PNG, GIF, or WebP image.`);
   }
 
   try {
@@ -127,7 +149,7 @@ Be thorough but concise. Provide realistic confidence scores based on image qual
             {
               type: "image_url",
               image_url: {
-                url: `data:${mimeType};base64,${imageBase64}`
+                url: `data:${processedMimeType};base64,${processedImageBase64}`
               }
             }
           ]
