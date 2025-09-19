@@ -7,6 +7,7 @@ import MediaUploader from "@/components/ImageUploader";
 import AssessmentResult, { AssessmentData } from "@/components/AssessmentResult";
 import DiagnosticChatbot from "@/components/DiagnosticChatbot";
 import { Upload, Zap, Database, Search, MessageSquare, Bot } from "lucide-react";
+import { Link } from "wouter";
 
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -452,17 +453,19 @@ export default function Home() {
             </CardHeader>
             <CardContent>
               <p className="text-sm text-muted-foreground mb-3">
-                Browse previously assessed laptops and diagnostic history.
+                Browse assessment history and search previous diagnostic records.
               </p>
               <Button 
                 variant="outline" 
                 size="sm" 
                 className="w-full" 
-                onClick={() => window.location.href = '/search'}
+                asChild
                 data-testid="link-search-records"
               >
-                <Search className="h-4 w-4 mr-2" />
-                Browse Records
+                <Link href="/search">
+                  <Search className="h-4 w-4 mr-2" />
+                  Browse Records
+                </Link>
               </Button>
             </CardContent>
           </Card>
