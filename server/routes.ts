@@ -3,7 +3,8 @@ import { createServer, type Server } from "http";
 import multer from "multer";
 import { storage } from "./storage";
 import { assessLaptopDamage, assessLaptopDamageFromVideo, fileToBase64 } from "./ai-assessment";
-import { insertAssessmentSchema } from "@shared/schema";
+import { insertAssessmentSchema, chatMessageSchema, interpretAssessmentSchema } from "@shared/schema";
+import { handleChatMessage, interpretAssessment } from "./chat-handler";
 
 // Configure multer for file uploads
 const upload = multer({
@@ -207,6 +208,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error('Error fetching assessment:', error);
       res.status(500).json({ error: 'Failed to fetch assessment' });
+    }
+  });
+
+  // Chat routes
+  
+  // General chat endpoint
+  app.post('/api/chat', async (req, res) => {
+    try {
+      const validationResult = chatMessageSchema.safeParse(req.body);
+      
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          error: 'Invalid request data',
+          details: validationResult.error.errors
+        });
+      }
+
+      const { message, conversationHistory } = validationResult.data;
+      const response = await handleChatMessage(message, conversationHistory || []);
+      
+      res.json({ response });
+    } catch (error) {
+      console.error('Chat error:', error);
+      res.status(500).json({ 
+        error: 'Chat failed',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
+  // Assessment interpretation endpoint
+  app.post('/api/chat/interpret-assessment', async (req, res) => {
+    try {
+      const validationResult = interpretAssessmentSchema.safeParse(req.body);
+      
+      if (!validationResult.success) {
+        return res.status(400).json({ 
+          error: 'Invalid request data',
+          details: validationResult.error.errors
+        });
+      }
+
+      const { assessment, filename } = validationResult.data;
+      const response = await interpretAssessment(assessment, filename || 'uploaded file');
+      
+      res.json({ response });
+    } catch (error) {
+      console.error('Assessment interpretation error:', error);
+      res.status(500).json({ 
+        error: 'Assessment interpretation failed',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
     }
   });
 

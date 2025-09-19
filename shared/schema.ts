@@ -49,3 +49,74 @@ export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 export type InsertAssessment = z.infer<typeof insertAssessmentSchema>;
 export type Assessment = typeof assessments.$inferSelect;
+
+// Shared types for chatbot functionality
+export interface AssessmentData {
+  grade: "A" | "B" | "C" | "D" | "PENDING";
+  confidence: number;
+  damageTypes: string[];
+  overallCondition: string;
+  detailedFindings: {
+    category: string;
+    severity: "Low" | "Medium" | "High";
+    description: string;
+  }[];
+  processingTime: number;
+  mediaUrl: string;
+  mediaType?: 'image' | 'video';
+  videoMetadata?: {
+    duration: number;
+    width: number;
+    height: number;
+    fps: number;
+    framesAnalyzed: number;
+  };
+}
+
+export interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: Date;
+  assessment?: AssessmentData;
+  files?: { name: string; type: string }[];
+  isUploading?: boolean;
+}
+
+// Zod schemas for chat endpoints
+export const chatMessageSchema = z.object({
+  message: z.string().min(1).max(1000),
+  conversationHistory: z.array(z.object({
+    role: z.enum(['user', 'assistant']),
+    content: z.string(),
+    timestamp: z.date().or(z.string()).transform(val => new Date(val))
+  })).optional()
+});
+
+export const interpretAssessmentSchema = z.object({
+  assessment: z.object({
+    grade: z.enum(["A", "B", "C", "D", "PENDING"]),
+    confidence: z.number().min(0).max(1),
+    damageTypes: z.array(z.string()),
+    overallCondition: z.string(),
+    detailedFindings: z.array(z.object({
+      category: z.string(),
+      severity: z.enum(["Low", "Medium", "High"]),
+      description: z.string()
+    })),
+    processingTime: z.number(),
+    mediaUrl: z.string(),
+    mediaType: z.enum(['image', 'video']).optional(),
+    videoMetadata: z.object({
+      duration: z.number(),
+      width: z.number(),
+      height: z.number(),
+      fps: z.number(),
+      framesAnalyzed: z.number()
+    }).optional()
+  }),
+  filename: z.string().optional()
+});
+
+export type ChatMessageRequest = z.infer<typeof chatMessageSchema>;
+export type InterpretAssessmentRequest = z.infer<typeof interpretAssessmentSchema>;
