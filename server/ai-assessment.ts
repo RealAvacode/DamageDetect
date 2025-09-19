@@ -61,8 +61,15 @@ export interface AIAssessmentResult {
   };
 }
 
-export async function assessLaptopDamage(imageBase64: string): Promise<AIAssessmentResult> {
+export async function assessLaptopDamage(imageBase64: string, mimeType: string = 'image/jpeg'): Promise<AIAssessmentResult> {
   const startTime = Date.now();
+
+  // Debug logging to understand what's being sent to OpenAI
+  console.log('Assessment request details:');
+  console.log('- MIME type:', mimeType);
+  console.log('- Base64 length:', imageBase64.length);
+  console.log('- Base64 sample (first 32 chars):', imageBase64.substring(0, 32));
+  console.log('- Data URL header:', `data:${mimeType};base64,`);
 
   try {
     const response = await openai.chat.completions.create({
@@ -109,7 +116,7 @@ Be thorough but concise. Provide realistic confidence scores based on image qual
             {
               type: "image_url",
               image_url: {
-                url: `data:image/jpeg;base64,${imageBase64}`
+                url: `data:${mimeType};base64,${imageBase64}`
               }
             }
           ]
@@ -143,8 +150,22 @@ Be thorough but concise. Provide realistic confidence scores based on image qual
       throw new Error('Invalid JSON response from AI assessment');
     }
 
-  } catch (error) {
+  } catch (error: any) {
     console.error('OpenAI API error:', error);
+    
+    // Provide more specific error messages for common OpenAI errors
+    if (error?.code === 'image_parse_error') {
+      throw new Error('The uploaded image could not be processed. Please ensure the image is clear, well-lit, and shows the laptop clearly. Try uploading a higher quality image with good lighting.');
+    }
+    
+    if (error?.message?.includes('unsupported image')) {
+      throw new Error('Image format not supported for analysis. Please upload a clear JPEG or PNG image of the laptop with good lighting and resolution.');
+    }
+    
+    if (error?.status === 400) {
+      throw new Error('Image quality issue: Please upload a clearer, higher-resolution image of the laptop with good lighting for better analysis.');
+    }
+    
     throw new Error(`AI assessment failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }

@@ -88,13 +88,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!isImage && !isVideo) {
         return res.status(400).json({ error: 'Invalid file type' });
       }
+
+      // Validate minimum file size for images
+      if (isImage && file.size < 1000) { // Minimum 1KB for meaningful image analysis
+        return res.status(400).json({ 
+          error: 'Image too small', 
+          message: 'Image must be at least 1KB and have meaningful content for analysis. Please upload a larger, clearer image of the laptop.'
+        });
+      }
       
       let aiResult;
       
       if (isImage) {
         // Process image file
         const imageBase64 = fileToBase64(file.buffer);
-        aiResult = await assessLaptopDamage(imageBase64);
+        aiResult = await assessLaptopDamage(imageBase64, file.mimetype);
       } else {
         // Process video file using frame extraction and AI analysis
         try {
