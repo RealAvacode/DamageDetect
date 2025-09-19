@@ -263,6 +263,131 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Conversation management routes
+  
+  // Get all conversations
+  app.get('/api/conversations', async (req, res) => {
+    try {
+      const conversations = await storage.getAllConversations();
+      res.json(conversations);
+    } catch (error) {
+      console.error('Error fetching conversations:', error);
+      res.status(500).json({ error: 'Failed to fetch conversations' });
+    }
+  });
+
+  // Create new conversation
+  app.post('/api/conversations', async (req, res) => {
+    try {
+      const { title } = req.body;
+      
+      if (!title || typeof title !== 'string' || title.trim().length === 0) {
+        return res.status(400).json({ error: 'Valid title is required' });
+      }
+
+      const conversation = await storage.createConversation({ title: title.trim() });
+      res.json(conversation);
+    } catch (error) {
+      console.error('Error creating conversation:', error);
+      res.status(500).json({ error: 'Failed to create conversation' });
+    }
+  });
+
+  // Get specific conversation with messages
+  app.get('/api/conversations/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      
+      const conversation = await storage.getConversation(id);
+      if (!conversation) {
+        return res.status(404).json({ error: 'Conversation not found' });
+      }
+
+      const messages = await storage.getConversationMessages(id);
+      
+      res.json({
+        ...conversation,
+        messages
+      });
+    } catch (error) {
+      console.error('Error fetching conversation:', error);
+      res.status(500).json({ error: 'Failed to fetch conversation' });
+    }
+  });
+
+  // Add message to conversation
+  app.post('/api/conversations/:id/messages', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { role, content, assessmentData, fileData } = req.body;
+
+      if (!role || !content) {
+        return res.status(400).json({ error: 'Role and content are required' });
+      }
+
+      if (!['user', 'assistant'].includes(role)) {
+        return res.status(400).json({ error: 'Role must be either "user" or "assistant"' });
+      }
+
+      const conversation = await storage.getConversation(id);
+      if (!conversation) {
+        return res.status(404).json({ error: 'Conversation not found' });
+      }
+
+      const message = await storage.addMessage({
+        conversationId: id,
+        role,
+        content,
+        assessmentData: assessmentData || null,
+        fileData: fileData || null
+      });
+
+      res.json(message);
+    } catch (error) {
+      console.error('Error adding message:', error);
+      res.status(500).json({ error: 'Failed to add message' });
+    }
+  });
+
+  // Update conversation title
+  app.patch('/api/conversations/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { title } = req.body;
+
+      if (!title || typeof title !== 'string' || title.trim().length === 0) {
+        return res.status(400).json({ error: 'Valid title is required' });
+      }
+
+      const conversation = await storage.updateConversation(id, { title: title.trim() });
+      if (!conversation) {
+        return res.status(404).json({ error: 'Conversation not found' });
+      }
+
+      res.json(conversation);
+    } catch (error) {
+      console.error('Error updating conversation:', error);
+      res.status(500).json({ error: 'Failed to update conversation' });
+    }
+  });
+
+  // Delete conversation
+  app.delete('/api/conversations/:id', async (req, res) => {
+    try {
+      const { id } = req.params;
+
+      const success = await storage.deleteConversation(id);
+      if (!success) {
+        return res.status(404).json({ error: 'Conversation not found' });
+      }
+
+      res.json({ success: true });
+    } catch (error) {
+      console.error('Error deleting conversation:', error);
+      res.status(500).json({ error: 'Failed to delete conversation' });
+    }
+  });
+
   const httpServer = createServer(app);
 
   return httpServer;

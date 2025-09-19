@@ -6,8 +6,9 @@ import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Avatar, AvatarImage, AvatarFallback } from '@/components/ui/avatar';
 import { Separator } from '@/components/ui/separator';
-import { Send, Upload, Bot, User, Loader2, Camera, Video, FileText } from 'lucide-react';
-import type { AssessmentData, ChatMessage } from '@shared/schema';
+import { DropdownMenu, DropdownMenuContent, DropdownMenuTrigger, DropdownMenuItem } from '@/components/ui/dropdown-menu';
+import { Send, Upload, Bot, User, Loader2, Camera, Video, FileText, Plus, MessageSquare, ChevronDown, Trash2 } from 'lucide-react';
+import type { AssessmentData, ChatMessage, Conversation, ConversationMessage } from '@shared/schema';
 import MediaUploader from './ImageUploader';
 import { cn } from '@/lib/utils';
 
@@ -15,24 +16,30 @@ interface LocalChatMessage extends Omit<ChatMessage, 'files'> {
   files?: File[];
 }
 
+interface ConversationWithMessages extends Conversation {
+  messages: ConversationMessage[];
+}
+
 interface DiagnosticChatbotProps {
   className?: string;
 }
 
 export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps) {
-  const [messages, setMessages] = useState<LocalChatMessage[]>([
-    {
-      id: '1',
-      role: 'assistant',
-      content: "Hi! I'm your diagnostic assistant. I can help you assess laptop condition by analyzing images or videos. Upload your media or ask me questions about laptop diagnostics!",
-      timestamp: new Date()
-    }
-  ]);
+  // Conversation management state
+  const [conversations, setConversations] = useState<Conversation[]>([]);
+  const [currentConversation, setCurrentConversation] = useState<ConversationWithMessages | null>(null);
+  const [messages, setMessages] = useState<LocalChatMessage[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [showUploader, setShowUploader] = useState(false);
+  const [isLoadingConversations, setIsLoadingConversations] = useState(true);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  // Load conversations on mount
+  useEffect(() => {
+    loadConversations();
+  }, []);
 
   // Auto-scroll to bottom when new messages arrive
   useEffect(() => {
@@ -41,8 +48,179 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
     }
   }, [messages]);
 
+  // Helper function to safely parse JSON data
+  const parseJsonSafely = (data: any) => {
+    if (data === null || data === undefined) return undefined;
+    if (typeof data === 'object') return data; // Already parsed by Drizzle
+    if (typeof data === 'string') {
+      try {
+        return JSON.parse(data);
+      } catch (error) {
+        console.warn('Failed to parse JSON data:', data, error);
+        return undefined;
+      }
+    }
+    return undefined;
+  };
+
+  // Refresh conversations list (used after mutations)
+  const refreshConversationsList = async () => {
+    try {
+      const response = await fetch('/api/conversations');
+      if (response.ok) {
+        const conversationsList: Conversation[] = await response.json();
+        setConversations(conversationsList);
+      }
+    } catch (error) {
+      console.error('Failed to refresh conversations:', error);
+    }
+  };
+
+  // Load all conversations
+  const loadConversations = async () => {
+    try {
+      setIsLoadingConversations(true);
+      const response = await fetch('/api/conversations');
+      if (response.ok) {
+        const conversationsList: Conversation[] = await response.json();
+        setConversations(conversationsList);
+        
+        // If no conversations exist, create a default one
+        if (conversationsList.length === 0) {
+          await createNewConversation('New Chat');
+        } else {
+          // Load the most recent conversation
+          await loadConversation(conversationsList[0].id);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to load conversations:', error);
+      // Create a default conversation if loading fails
+      await createNewConversation('New Chat');
+    } finally {
+      setIsLoadingConversations(false);
+    }
+  };
+
+  // Load specific conversation
+  const loadConversation = async (conversationId: string) => {
+    try {
+      const response = await fetch(`/api/conversations/${conversationId}`);
+      if (response.ok) {
+        const conversationData: ConversationWithMessages = await response.json();
+        setCurrentConversation(conversationData);
+        
+        // Convert database messages to local format
+        const localMessages: LocalChatMessage[] = conversationData.messages.map(msg => ({
+          id: msg.id,
+          role: msg.role as 'user' | 'assistant',
+          content: msg.content,
+          timestamp: new Date(msg.timestamp),
+          assessment: parseJsonSafely(msg.assessmentData)
+        }));
+        
+        // Add welcome message if this is a new conversation with no messages
+        if (localMessages.length === 0) {
+          localMessages.push({
+            id: 'welcome',
+            role: 'assistant',
+            content: "Hi! I'm your diagnostic assistant. I can help you assess laptop condition by analyzing images or videos. Upload your media or ask me questions about laptop diagnostics!",
+            timestamp: new Date()
+          });
+        }
+        
+        setMessages(localMessages);
+      }
+    } catch (error) {
+      console.error('Failed to load conversation:', error);
+    }
+  };
+
+  // Create new conversation
+  const createNewConversation = async (title: string = 'New Chat') => {
+    try {
+      const response = await fetch('/api/conversations', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title })
+      });
+      
+      if (response.ok) {
+        const newConversation: Conversation = await response.json();
+        // Refresh conversations list to get updated metadata
+        await refreshConversationsList();
+        await loadConversation(newConversation.id);
+      }
+    } catch (error) {
+      console.error('Failed to create conversation:', error);
+    }
+  };
+
+  // Delete conversation
+  const deleteConversation = async (conversationId: string) => {
+    try {
+      const response = await fetch(`/api/conversations/${conversationId}`, {
+        method: 'DELETE'
+      });
+      
+      if (response.ok) {
+        // Update conversations list using updater function to avoid stale state
+        setConversations(prev => {
+          const remainingConversations = prev.filter(conv => conv.id !== conversationId);
+          
+          // If we deleted the current conversation, load another one or create new
+          if (currentConversation?.id === conversationId) {
+            if (remainingConversations.length > 0) {
+              // Load the most recent conversation by updatedAt
+              const mostRecent = remainingConversations.sort((a, b) => 
+                new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime()
+              )[0];
+              loadConversation(mostRecent.id);
+            } else {
+              createNewConversation('New Chat');
+            }
+          }
+          
+          return remainingConversations;
+        });
+      }
+    } catch (error) {
+      console.error('Failed to delete conversation:', error);
+    }
+  };
+
+  // Save message to database
+  const saveMessage = async (message: LocalChatMessage) => {
+    if (!currentConversation) return;
+    
+    try {
+      // Strip ephemeral blob URLs from assessment data before persisting
+      let cleanedAssessmentData = null;
+      if (message.assessment) {
+        const { mediaUrl, ...assessmentWithoutUrl } = message.assessment;
+        cleanedAssessmentData = assessmentWithoutUrl;
+      }
+      
+      await fetch(`/api/conversations/${currentConversation.id}/messages`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: message.role,
+          content: message.content,
+          assessmentData: cleanedAssessmentData, // Save without ephemeral mediaUrl
+          fileData: message.files ? message.files.map(f => ({ name: f.name, type: f.type })) : null
+        })
+      });
+      
+      // Refresh conversations list to update metadata (updatedAt)
+      await refreshConversationsList();
+    } catch (error) {
+      console.error('Failed to save message:', error);
+    }
+  };
+
   const handleSendMessage = async () => {
-    if (!inputValue.trim() || isLoading) return;
+    if (!inputValue.trim() || isLoading || !currentConversation) return;
 
     const userMessage: LocalChatMessage = {
       id: Date.now().toString(),
@@ -54,6 +232,9 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
     setMessages(prev => [...prev, userMessage]);
     setInputValue('');
     setIsLoading(true);
+
+    // Save user message to database
+    await saveMessage(userMessage);
 
     try {
       const response = await fetch('/api/chat', {
@@ -81,6 +262,9 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+      
+      // Save assistant message to database
+      await saveMessage(assistantMessage);
     } catch (error) {
       console.error('Chat error:', error);
       const errorMessage: LocalChatMessage = {
@@ -217,6 +401,67 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
           <Badge variant="outline" className="ml-auto">
             AI-Powered
           </Badge>
+        </div>
+        
+        {/* Conversation Management */}
+        <div className="flex items-center justify-between gap-2 mt-3">
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" size="sm" className="flex-1 justify-between" data-testid="conversation-selector">
+                <span className="flex items-center gap-2">
+                  <MessageSquare className="h-4 w-4" />
+                  {isLoadingConversations ? (
+                    "Loading..."
+                  ) : currentConversation ? (
+                    <span className="truncate max-w-[200px]">{currentConversation.title}</span>
+                  ) : (
+                    "Select Conversation"
+                  )}
+                </span>
+                <ChevronDown className="h-4 w-4" />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start" className="w-64">
+              {conversations.map((conv) => (
+                <DropdownMenuItem
+                  key={conv.id}
+                  onClick={() => loadConversation(conv.id)}
+                  className="flex items-center justify-between cursor-pointer"
+                >
+                  <span className="truncate flex-1">{conv.title}</span>
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-6 w-6"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        deleteConversation(conv.id);
+                      }}
+                      data-testid={`delete-conversation-${conv.id}`}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                </DropdownMenuItem>
+              ))}
+              {conversations.length === 0 && (
+                <DropdownMenuItem disabled>
+                  No conversations yet
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+          
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={() => createNewConversation('New Chat')}
+            data-testid="new-conversation"
+            disabled={isLoadingConversations}
+          >
+            <Plus className="h-4 w-4" />
+          </Button>
         </div>
       </CardHeader>
       
