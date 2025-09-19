@@ -77,9 +77,9 @@ export async function assessLaptopDamage(imageBase64: string, mimeType: string =
   }
 
   // Ensure MIME type is supported by OpenAI Vision API
-  const supportedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+  const supportedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif'];
   if (!supportedMimeTypes.includes(mimeType.toLowerCase())) {
-    throw new Error(`Image format '${mimeType}' is not supported. Please upload a JPEG, PNG, GIF, or WebP image.`);
+    throw new Error(`Image format '${mimeType}' is not supported. Please upload a JPEG, PNG, GIF, WebP, or HEIC image.`);
   }
 
   try {
