@@ -160,10 +160,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
     } catch (error) {
-      console.error('Assessment error:', error);
+      console.error('Assessment error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        name: error instanceof Error ? error.name : 'UnknownError',
+        fullError: error
+      });
+      
+      // Provide more specific error messages based on error type
+      let userMessage = 'Unknown error';
+      if (error instanceof Error) {
+        userMessage = error.message;
+        
+        // Additional context for common error types
+        if (error.message.includes('OPENAI_API_KEY')) {
+          userMessage = 'AI service configuration error. Please contact support.';
+        } else if (error.message.includes('database') || error.message.includes('storage')) {
+          userMessage = 'Database error occurred while saving assessment. Please try again.';
+        } else if (error.message.includes('network') || error.message.includes('fetch')) {
+          userMessage = 'Network error occurred. Please check your connection and try again.';
+        }
+      }
+      
       res.status(500).json({ 
         error: 'Assessment failed', 
-        message: error instanceof Error ? error.message : 'Unknown error'
+        message: userMessage
       });
     }
   });

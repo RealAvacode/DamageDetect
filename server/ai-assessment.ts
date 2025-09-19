@@ -139,10 +139,21 @@ Be thorough but concise. Provide realistic confidence scores based on image qual
     });
 
     const processingTime = (Date.now() - startTime) / 1000;
-    const content = response.choices[0]?.message?.content;
+    
+    // Enhanced logging to debug OpenAI response issues
+    console.log('OpenAI response details:', {
+      choices: response.choices?.length || 0,
+      firstChoice: response.choices?.[0],
+      message: response.choices?.[0]?.message,
+      content: response.choices?.[0]?.message?.content,
+      finishReason: response.choices?.[0]?.finish_reason,
+      usage: response.usage
+    });
+
+    const content = response.choices?.[0]?.message?.content;
 
     if (!content) {
-      throw new Error('No response content from OpenAI');
+      throw new Error(`No response content from OpenAI. Response had ${response.choices?.length || 0} choices. First choice finish reason: ${response.choices?.[0]?.finish_reason || 'unknown'}`);
     }
 
     try {
@@ -261,10 +272,21 @@ Note: Confidence should reflect both the assessment certainty and the limitation
     });
 
     const processingTime = (Date.now() - startTime) / 1000;
-    const content = response.choices[0]?.message?.content;
+    
+    // Enhanced logging to debug OpenAI response issues
+    console.log('OpenAI response details:', {
+      choices: response.choices?.length || 0,
+      firstChoice: response.choices?.[0],
+      message: response.choices?.[0]?.message,
+      content: response.choices?.[0]?.message?.content,
+      finishReason: response.choices?.[0]?.finish_reason,
+      usage: response.usage
+    });
+
+    const content = response.choices?.[0]?.message?.content;
 
     if (!content) {
-      throw new Error('No response content from OpenAI');
+      throw new Error(`No response content from OpenAI. Response had ${response.choices?.length || 0} choices. First choice finish reason: ${response.choices?.[0]?.finish_reason || 'unknown'}`);
     }
 
     try {

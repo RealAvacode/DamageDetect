@@ -307,8 +307,23 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
       });
 
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Assessment failed');
+        let errorMessage = 'Assessment failed';
+        try {
+          const error = await response.json();
+          errorMessage = error.message || error.error || 'Assessment failed';
+        } catch (parseError) {
+          console.error('Failed to parse error response:', parseError);
+          if (response.status === 400) {
+            errorMessage = 'Bad request - please check your file format and size';
+          } else if (response.status === 413) {
+            errorMessage = 'File too large - please choose a smaller file';
+          } else if (response.status === 500) {
+            errorMessage = 'Server error - please try again or contact support';
+          } else {
+            errorMessage = `Request failed with status ${response.status}`;
+          }
+        }
+        throw new Error(errorMessage);
       }
 
       const result = await response.json();
@@ -363,11 +378,23 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
         ).concat([assistantMessage]));
       }
     } catch (error) {
-      console.error('Upload error:', error);
+      console.error('Upload error details:', {
+        error,
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined
+      });
+      
+      let errorText = 'Unknown error occurred';
+      if (error instanceof Error) {
+        errorText = error.message;
+      } else if (typeof error === 'string') {
+        errorText = error;
+      }
+      
       const errorMessage: LocalChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
-        content: `Analysis failed: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        content: `Analysis failed: ${errorText}. Please try uploading a clear JPEG or PNG image of the laptop.`,
         timestamp: new Date()
       };
       
