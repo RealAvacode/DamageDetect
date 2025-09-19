@@ -47,7 +47,7 @@ Be conversational, friendly, and helpful. Keep responses concise but informative
     const response = await openai.chat.completions.create({
       model: "gpt-5",
       messages: messages,
-      max_tokens: 500
+      max_completion_tokens: 500
     });
 
     return response.choices[0].message.content || "I apologize, but I couldn't process your request. Please try again.";
@@ -91,7 +91,7 @@ Please provide a conversational interpretation of these results. Explain what th
           content: prompt
         }
       ],
-      max_tokens: 400
+      max_completion_tokens: 400
     });
 
     return response.choices[0].message.content || "I've completed the analysis, but couldn't generate a detailed interpretation.";
