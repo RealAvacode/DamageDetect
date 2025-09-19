@@ -28,7 +28,9 @@ export default function MediaUploader({
     if (disabled) return;
     
     const validFiles = acceptedFiles.filter(file => {
-      const isImage = file.type.startsWith('image/');
+      const isImage = file.type.startsWith('image/') || 
+                     // Handle HEIC files which browsers sometimes report as application/octet-stream
+                     (file.type === 'application/octet-stream' && file.name.match(/\.(heic|heif)$/i));
       const isVideo = file.type.startsWith('video/');
       
       if (acceptedTypes === 'images') return isImage;
@@ -44,7 +46,8 @@ export default function MediaUploader({
     // Create previews and track file types
     const newPreviews = newFiles.map(file => URL.createObjectURL(file));
     const newFileTypes = newFiles.map(file => 
-      file.type.startsWith('image/') ? 'image' : 'video'
+      (file.type.startsWith('image/') || 
+       (file.type === 'application/octet-stream' && file.name.match(/\.(heic|heif)$/i))) ? 'image' : 'video'
     );
     
     setPreviews(current => {
@@ -66,7 +69,8 @@ export default function MediaUploader({
     URL.revokeObjectURL(previews[index]);
     const newPreviews = newFiles.map(file => URL.createObjectURL(file));
     const newFileTypes = newFiles.map(file => 
-      file.type.startsWith('image/') ? 'image' : 'video'
+      (file.type.startsWith('image/') || 
+       (file.type === 'application/octet-stream' && file.name.match(/\.(heic|heif)$/i))) ? 'image' : 'video'
     );
     
     setPreviews(current => {

@@ -77,7 +77,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Get the first file for analysis
       const file = files[0];
-      const isImage = file.mimetype.startsWith('image/');
+      const isImage = file.mimetype.startsWith('image/') || 
+                     // Handle HEIC files which sometimes appear as application/octet-stream
+                     (file.mimetype === 'application/octet-stream' && file.originalname.match(/\.(heic|heif)$/i));
       const isVideo = file.mimetype.startsWith('video/') || 
                      file.mimetype === 'application/mp4' ||
                      file.mimetype === 'video/x-mp4' ||
