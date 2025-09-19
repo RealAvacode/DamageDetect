@@ -71,6 +71,17 @@ export async function assessLaptopDamage(imageBase64: string, mimeType: string =
   console.log('- Base64 sample (first 32 chars):', imageBase64.substring(0, 32));
   console.log('- Data URL header:', `data:${mimeType};base64,`);
 
+  // Validate image format and size
+  if (!imageBase64 || imageBase64.length < 100) {
+    throw new Error('Image data is too small or corrupted. Please upload a clear, high-resolution image of the laptop.');
+  }
+
+  // Ensure MIME type is supported by OpenAI Vision API
+  const supportedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+  if (!supportedMimeTypes.includes(mimeType.toLowerCase())) {
+    throw new Error(`Image format '${mimeType}' is not supported. Please upload a JPEG, PNG, GIF, or WebP image.`);
+  }
+
   try {
     const response = await openai.chat.completions.create({
       model: "gpt-4o", // Using gpt-4o which supports vision capabilities
@@ -155,15 +166,15 @@ Be thorough but concise. Provide realistic confidence scores based on image qual
     
     // Provide more specific error messages for common OpenAI errors
     if (error?.code === 'image_parse_error') {
-      throw new Error('The uploaded image could not be processed. Please ensure the image is clear, well-lit, and shows the laptop clearly. Try uploading a higher quality image with good lighting.');
+      throw new Error('Image could not be processed by AI. Please upload a clear, well-lit photo of the laptop taken from a normal distance (not too close). Ensure the image is in JPEG or PNG format and shows the laptop clearly against a plain background.');
     }
     
-    if (error?.message?.includes('unsupported image')) {
-      throw new Error('Image format not supported for analysis. Please upload a clear JPEG or PNG image of the laptop with good lighting and resolution.');
+    if (error?.message?.includes('unsupported image') || error?.message?.includes('invalid image')) {
+      throw new Error('Image format issue. Please upload a standard JPEG or PNG photo of the laptop. Avoid screenshots, very small images, or corrupted files. Take a clear photo with good lighting.');
     }
     
-    if (error?.status === 400) {
-      throw new Error('Image quality issue: Please upload a clearer, higher-resolution image of the laptop with good lighting for better analysis.');
+    if (error?.status === 400 && error?.message?.includes('image')) {
+      throw new Error('Image quality issue. Please take a new photo of the laptop with: 1) Good lighting, 2) Clear focus, 3) Normal distance (not too close), 4) Plain background. Save as JPEG or PNG format.');
     }
     
     throw new Error(`AI assessment failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
