@@ -1,6 +1,8 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
+// @ts-ignore - heic-convert doesn't have type definitions
+import heicConvert from "heic-convert";
 import { storage } from "./storage";
 import { assessLaptopDamage, fileToBase64 } from "./ai-assessment";
 import { insertAssessmentSchema } from "@shared/schema";
@@ -12,14 +14,59 @@ const upload = multer({
     fileSize: 10 * 1024 * 1024, // 10MB limit
   },
   fileFilter: (req, file, cb) => {
-    // Only allow image files
-    if (file.mimetype.startsWith('image/')) {
+    // Allow image files and HEIC files
+    if (file.mimetype.startsWith('image/') || file.mimetype === 'image/heic' || file.mimetype === 'image/heif' || file.originalname.toLowerCase().endsWith('.heic') || file.originalname.toLowerCase().endsWith('.heif')) {
       cb(null, true);
     } else {
-      cb(new Error('Only image files are allowed'));
+      cb(new Error('Only image files (including HEIC/HEIF) are allowed'));
     }
   }
 });
+
+// Helper function to convert HEIC to JPEG
+async function convertHeicToJpeg(buffer: Buffer): Promise<Buffer> {
+  try {
+    // Validate buffer
+    if (!buffer || buffer.length === 0) {
+      throw new Error('Empty or invalid buffer provided');
+    }
+
+    // Check if buffer starts with HEIC magic bytes
+    const heicMagicBytes = buffer.slice(4, 12);
+    const isValidHeic = heicMagicBytes.includes(Buffer.from('ftyp')) && 
+                       (heicMagicBytes.includes(Buffer.from('heic')) || 
+                        heicMagicBytes.includes(Buffer.from('heix')) ||
+                        heicMagicBytes.includes(Buffer.from('heim')) ||
+                        heicMagicBytes.includes(Buffer.from('heis')));
+
+    if (!isValidHeic) {
+      console.log('Buffer does not appear to be a valid HEIC file, magic bytes:', heicMagicBytes.toString('hex'));
+      throw new Error('File does not appear to be a valid HEIC image');
+    }
+
+    console.log('Converting valid HEIC file to JPEG...');
+    const outputBuffer = await heicConvert({
+      buffer,
+      format: 'JPEG',
+      quality: 0.9
+    });
+    return outputBuffer as Buffer;
+  } catch (error) {
+    console.error('HEIC conversion error:', error);
+    if (error instanceof Error) {
+      throw new Error(`Failed to convert HEIC image: ${error.message}`);
+    }
+    throw new Error('Failed to convert HEIC image to JPEG');
+  }
+}
+
+// Helper function to check if file is HEIC/HEIF
+function isHeicFile(file: Express.Multer.File): boolean {
+  return file.mimetype === 'image/heic' || 
+         file.mimetype === 'image/heif' || 
+         file.originalname.toLowerCase().endsWith('.heic') || 
+         file.originalname.toLowerCase().endsWith('.heif');
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Assessment routes
@@ -35,7 +82,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // For now, analyze the first image
       const imageFile = files[0];
-      const imageBase64 = fileToBase64(imageFile.buffer);
+      console.log(`Processing file: ${imageFile.originalname}, type: ${imageFile.mimetype}, size: ${imageFile.size} bytes`);
+      
+      // Convert HEIC to JPEG if needed
+      let processedBuffer = imageFile.buffer;
+      if (isHeicFile(imageFile)) {
+        console.log('Detected HEIC file, attempting conversion...');
+        try {
+          processedBuffer = await convertHeicToJpeg(imageFile.buffer);
+          console.log('HEIC conversion successful');
+        } catch (conversionError) {
+          console.error('HEIC conversion failed:', conversionError);
+          return res.status(400).json({ 
+            error: 'HEIC conversion failed', 
+            message: conversionError instanceof Error ? conversionError.message : 'Unknown conversion error'
+          });
+        }
+      }
+      
+      const imageBase64 = fileToBase64(processedBuffer);
 
       // Perform AI assessment
       const aiResult = await assessLaptopDamage(imageBase64);

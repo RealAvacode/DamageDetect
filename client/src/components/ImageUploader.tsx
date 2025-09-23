@@ -58,7 +58,7 @@ export default function ImageUploader({
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
     accept: {
-      'image/*': ['.jpeg', '.jpg', '.png', '.webp']
+      'image/*': ['.jpeg', '.jpg', '.png', '.webp', '.heic', '.heif']
     },
     maxFiles,
     disabled
@@ -84,7 +84,7 @@ export default function ImageUploader({
             ) : (
               <>
                 <p><span className="font-medium">Click to upload</span> or drag and drop</p>
-                <p className="text-muted-foreground">PNG, JPG, WEBP up to 10MB each</p>
+                <p className="text-muted-foreground">PNG, JPG, WEBP, HEIC up to 10MB each</p>
                 <p className="text-muted-foreground">Maximum {maxFiles} images</p>
               </>
             )}
