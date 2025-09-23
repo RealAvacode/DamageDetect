@@ -24,6 +24,22 @@ interface DiagnosticChatbotProps {
   className?: string;
 }
 
+const generateAssessmentResponse = (assessment: AssessmentData, filename?: string): string => {
+  return `## Assessment Complete! 📊${filename ? ` - ${filename}` : ''}
+
+**Overall Grade**: ${assessment.grade} (${Math.round(assessment.confidence * 100)}% confidence)
+**Condition**: ${assessment.damageDescription}
+
+**Damage Types Detected**: ${assessment.damageTypes.length > 0 ? assessment.damageTypes.join(', ') : 'None detected'}
+
+### Detailed Findings:
+${assessment.detailedFindings.map(finding => 
+  `• **${finding.category}** (${finding.severity}): ${finding.description}`
+).join('\n')}
+
+The assessment has been saved to your database with SKU: ${assessment.sku}`;
+};
+
 export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps) {
   // Conversation management state
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -84,7 +100,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
       if (response.ok) {
         const conversationsList: Conversation[] = await response.json();
         setConversations(conversationsList);
-        
+
         // If no conversations exist, create a default one
         if (conversationsList.length === 0) {
           await createNewConversation('New Chat');
@@ -109,7 +125,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
       if (response.ok) {
         const conversationData: ConversationWithMessages = await response.json();
         setCurrentConversation(conversationData);
-        
+
         // Convert database messages to local format
         const localMessages: LocalChatMessage[] = conversationData.messages.map(msg => ({
           id: msg.id,
@@ -118,7 +134,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
           timestamp: new Date(msg.timestamp),
           assessment: parseJsonSafely(msg.assessmentData)
         }));
-        
+
         // Add welcome message if this is a new conversation with no messages
         if (localMessages.length === 0) {
           localMessages.push({
@@ -128,7 +144,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
             timestamp: new Date()
           });
         }
-        
+
         setMessages(localMessages);
       }
     } catch (error) {
@@ -144,7 +160,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ title })
       });
-      
+
       if (response.ok) {
         const newConversation: Conversation = await response.json();
         // Refresh conversations list to get updated metadata
@@ -162,12 +178,12 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
       const response = await fetch(`/api/conversations/${conversationId}`, {
         method: 'DELETE'
       });
-      
+
       if (response.ok) {
         // Update conversations list using updater function to avoid stale state
         setConversations(prev => {
           const remainingConversations = prev.filter(conv => conv.id !== conversationId);
-          
+
           // If we deleted the current conversation, load another one or create new
           if (currentConversation?.id === conversationId) {
             if (remainingConversations.length > 0) {
@@ -180,7 +196,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
               createNewConversation('New Chat');
             }
           }
-          
+
           return remainingConversations;
         });
       }
@@ -192,7 +208,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
   // Save message to database
   const saveMessage = async (message: LocalChatMessage) => {
     if (!currentConversation) return;
-    
+
     try {
       // Strip ephemeral blob URLs from assessment data before persisting
       let cleanedAssessmentData = null;
@@ -200,7 +216,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
         const { mediaUrl, ...assessmentWithoutUrl } = message.assessment;
         cleanedAssessmentData = assessmentWithoutUrl;
       }
-      
+
       await fetch(`/api/conversations/${currentConversation.id}/messages`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -211,7 +227,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
           fileData: message.files ? message.files.map(f => ({ name: f.name, type: f.type })) : null
         })
       });
-      
+
       // Refresh conversations list to update metadata (updatedAt)
       await refreshConversationsList();
     } catch (error) {
@@ -253,7 +269,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
       }
 
       const result = await response.json();
-      
+
       const assistantMessage: LocalChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
@@ -262,7 +278,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
       };
 
       setMessages(prev => [...prev, assistantMessage]);
-      
+
       // Save assistant message to database
       await saveMessage(assistantMessage);
     } catch (error) {
@@ -279,103 +295,75 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
     }
   };
 
-  const handleFilesSelected = async (files: File[]) => {
+  // This function is called when files are selected by the user via the MediaUploader component
+  const handleFileUpload = async (files: File[]) => {
     if (files.length === 0) return;
 
+    setIsLoading(true);
+
+    // Create a single upload message for the batch
     const uploadMessage: LocalChatMessage = {
       id: Date.now().toString(),
       role: 'user',
-      content: `Uploaded ${files.length} file(s) for analysis: ${files.map(f => f.name).join(', ')}`,
+      content: `Analyzing ${files.length} file${files.length > 1 ? 's' : ''}...`,
       timestamp: new Date(),
-      files: files,
       isUploading: true
     };
 
     setMessages(prev => [...prev, uploadMessage]);
-    setShowUploader(false);
-    setIsLoading(true);
 
     try {
+      // Process all files in a single request
       const formData = new FormData();
-      files.forEach(file => {
-        formData.append('files', file);
+      files.forEach((file, index) => {
+        formData.append('laptop_images', file);
       });
 
-      const response = await fetch('/api/assessments', {
+      const response = await fetch('/api/assess-batch', {
         method: 'POST',
-        body: formData,
+        body: formData
       });
 
       if (!response.ok) {
-        let errorMessage = 'Assessment failed';
-        try {
-          const error = await response.json();
-          errorMessage = error.message || error.error || 'Assessment failed';
-        } catch (parseError) {
-          console.error('Failed to parse error response:', parseError);
-          if (response.status === 400) {
-            errorMessage = 'Bad request - please check your file format and size';
-          } else if (response.status === 413) {
-            errorMessage = 'File too large - please choose a smaller file';
-          } else if (response.status === 500) {
-            errorMessage = 'Server error - please try again or contact support';
-          } else {
-            errorMessage = `Request failed with status ${response.status}`;
-          }
-        }
-        throw new Error(errorMessage);
+        const errorData = await response.json();
+        throw new Error(errorData.message || `HTTP error! status: ${response.status}`);
       }
 
-      const result = await response.json();
-      
-      if (result.success) {
-        const fileType = files[0].type;
-        const isVideo = fileType.startsWith('video/');
-        
-        const assessmentData: AssessmentData = {
-          grade: result.assessment.grade,
-          confidence: result.assessment.confidence,
-          damageTypes: result.assessment.damageTypes || [],
-          overallCondition: result.assessment.damageDescription || result.overallCondition,
-          detailedFindings: result.assessment.detailedFindings || result.detailedFindings || [],
-          processingTime: result.assessment.processingTime,
-          mediaUrl: URL.createObjectURL(files[0]),
-          mediaType: isVideo ? 'video' : 'image',
-          videoMetadata: result.assessment.videoMetadata
-        };
+      const data = await response.json();
 
-        // Generate conversational response about the assessment
-        const chatResponse = await fetch('/api/chat/interpret-assessment', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            assessment: assessmentData,
-            filename: files[0].name
-          }),
+      if (data.success && data.assessments) {
+        const assistantMessages: LocalChatMessage[] = data.assessments.map((assessmentResult: any, index: number) => {
+          const assessmentData: AssessmentData = {
+            id: assessmentResult.id,
+            sku: assessmentResult.sku,
+            brand: assessmentResult.brand,
+            model: assessmentResult.model,
+            grade: assessmentResult.grade,
+            confidence: assessmentResult.confidence,
+            damageDescription: assessmentResult.damageDescription,
+            detailedFindings: assessmentResult.detailedFindings,
+            damageTypes: assessmentResult.damageTypes,
+            imageUrl: assessmentResult.imageUrl,
+            createdAt: assessmentResult.createdAt
+          };
+
+          const assistantResponse = generateAssessmentResponse(assessmentData, files[index]?.name);
+
+          return {
+            id: (Date.now() + index + 1).toString(),
+            role: 'assistant' as const,
+            content: assistantResponse,
+            timestamp: new Date(),
+            assessment: assessmentData
+          };
         });
 
-        let assistantResponse = "I've completed the analysis!";
-        if (chatResponse.ok) {
-          const chatResult = await chatResponse.json();
-          assistantResponse = chatResult.response;
-        }
-
-        const assistantMessage: LocalChatMessage = {
-          id: (Date.now() + 1).toString(),
-          role: 'assistant',
-          content: assistantResponse,
-          timestamp: new Date(),
-          assessment: assessmentData
-        };
-
-        // Update the upload message to remove loading state
+        // Update the upload message to remove loading state and add all assessment results
         setMessages(prev => prev.map(msg => 
           msg.id === uploadMessage.id 
             ? { ...msg, isUploading: false }
             : msg
-        ).concat([assistantMessage]));
+        ).concat(assistantMessages));
       }
     } catch (error) {
       console.error('Upload error details:', {
@@ -383,21 +371,21 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
         message: error instanceof Error ? error.message : 'Unknown error',
         stack: error instanceof Error ? error.stack : undefined
       });
-      
+
       let errorText = 'Unknown error occurred';
       if (error instanceof Error) {
         errorText = error.message;
       } else if (typeof error === 'string') {
         errorText = error;
       }
-      
+
       const errorMessage: LocalChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: `Analysis failed: ${errorText}. Please try uploading a clear JPEG or PNG image of the laptop.`,
         timestamp: new Date()
       };
-      
+
       setMessages(prev => prev.map(msg => 
         msg.id === uploadMessage.id 
           ? { ...msg, isUploading: false }
@@ -429,7 +417,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
             AI-Powered
           </Badge>
         </div>
-        
+
         {/* Conversation Management */}
         <div className="flex items-center justify-between gap-2 mt-3">
           <DropdownMenu>
@@ -479,7 +467,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
               )}
             </DropdownMenuContent>
           </DropdownMenu>
-          
+
           <Button 
             variant="outline" 
             size="sm" 
@@ -491,9 +479,9 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
           </Button>
         </div>
       </CardHeader>
-      
+
       <Separator />
-      
+
       <CardContent className="flex-1 flex flex-col p-0">
         {/* Chat Messages */}
         <ScrollArea className="flex-1 p-4" ref={scrollAreaRef}>
@@ -511,7 +499,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
                     </AvatarFallback>
                   </Avatar>
                 )}
-                
+
                 <div className={cn(
                   "max-w-[80%] space-y-1",
                   message.role === 'user' && "flex flex-col items-end"
@@ -525,7 +513,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
                     <p className="text-sm whitespace-pre-wrap">
                       {message.content}
                     </p>
-                    
+
                     {message.files && (
                       <div className="mt-2 flex flex-wrap gap-1">
                         {message.files.map((file, index) => (
@@ -546,7 +534,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
                       </div>
                     )}
                   </div>
-                  
+
                   {message.assessment && (
                     <Card className="mt-2 w-full">
                       <CardContent className="p-3 space-y-2">
@@ -562,7 +550,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
                             {Math.round(message.assessment.confidence * 100)}% confidence
                           </span>
                         </div>
-                        
+
                         {message.assessment.damageTypes.length > 0 && (
                           <div className="flex flex-wrap gap-1">
                             {message.assessment.damageTypes.map((type, index) => (
@@ -572,7 +560,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
                             ))}
                           </div>
                         )}
-                        
+
                         {message.assessment.mediaType && (
                           <div className="aspect-video bg-muted rounded overflow-hidden">
                             {message.assessment.mediaType === 'video' ? (
@@ -593,12 +581,12 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
                       </CardContent>
                     </Card>
                   )}
-                  
+
                   <span className="text-xs text-muted-foreground">
                     {formatTimestamp(message.timestamp)}
                   </span>
                 </div>
-                
+
                 {message.role === 'user' && (
                   <Avatar className="w-8 h-8 shrink-0">
                     <AvatarFallback>
@@ -608,7 +596,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
                 )}
               </div>
             ))}
-            
+
             {isLoading && (
               <div className="flex justify-start gap-3">
                 <Avatar className="w-8 h-8 shrink-0">
@@ -623,15 +611,15 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
             )}
           </div>
         </ScrollArea>
-        
+
         <Separator />
-        
+
         {/* File Upload Area */}
         {showUploader && (
           <div className="p-4 border-t bg-muted/30 relative z-20">
             <MediaUploader
-              onFilesSelected={handleFilesSelected}
-              maxFiles={1}
+              onFilesSelected={handleFileUpload}
+              maxFiles={5} // Allow multiple files
               acceptedTypes="both"
               disabled={isLoading}
             />
@@ -647,7 +635,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
             </div>
           </div>
         )}
-        
+
         {/* Input Area */}
         <div className="p-4 space-y-2">
           <div className="flex gap-2">
@@ -669,7 +657,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
               <Send className="h-4 w-4" />
             </Button>
           </div>
-          
+
           <div className="flex justify-center">
             <Button
               variant="outline"
