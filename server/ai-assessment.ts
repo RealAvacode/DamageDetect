@@ -79,7 +79,7 @@ export async function assessLaptopDamage(imageBase64: string, mimeType: string =
 
   // Clean up base64 string - remove any whitespace or invalid characters
   const cleanBase64 = imageBase64.replace(/[^A-Za-z0-9+/=]/g, '');
-  
+
   // Validate base64 format
   if (cleanBase64.length % 4 !== 0) {
     throw new Error('Invalid image data format. Please try uploading a different image.');
@@ -88,18 +88,21 @@ export async function assessLaptopDamage(imageBase64: string, mimeType: string =
   // Handle HEIC files - OpenAI Vision API supports HEIC directly
   let processedImageBase64 = cleanBase64;
   let processedMimeType = mimeType;
-  
-  // Ensure MIME type is supported by OpenAI Vision API
-  const openAISupportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif'];
-  if (!openAISupportedTypes.includes(processedMimeType.toLowerCase())) {
-    throw new Error(`Image format '${processedMimeType}' is not supported by the AI vision system. Please upload a JPEG, PNG, GIF, WebP, or HEIC image.`);
+
+  // Ensure MIME type is supported by OpenAI Vision API (after conversion)
+  const openAISupportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+
+  // We accept HEIC but convert it to JPEG, so check original format
+  const originalSupportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif'];
+  if (!originalSupportedTypes.includes(mimeType.toLowerCase())) {
+    throw new Error(`Image format '${mimeType}' is not supported by the AI vision system. Please upload a JPEG, PNG, GIF, WebP, or HEIC image.`);
   }
 
   // Validate and potentially reprocess image with Sharp to ensure it's valid
   try {
     const imageBuffer = Buffer.from(processedImageBase64, 'base64');
     const imageInfo = await sharp(imageBuffer).metadata();
-    
+
     console.log('Image validation:', {
       width: imageInfo.width,
       height: imageInfo.height,
@@ -107,17 +110,17 @@ export async function assessLaptopDamage(imageBase64: string, mimeType: string =
       size: imageBuffer.length
     });
 
-    // If image is valid but might have issues, reprocess it
-    if (imageInfo.format && ['jpeg', 'png', 'webp', 'gif'].includes(imageInfo.format)) {
+    // Convert ALL images to JPEG for OpenAI compatibility
+    if (imageInfo.format) {
       // Convert to high-quality JPEG to ensure OpenAI compatibility
       const reprocessedBuffer = await sharp(imageBuffer)
         .jpeg({ quality: 95, mozjpeg: true })
         .toBuffer();
-      
+
       processedImageBase64 = reprocessedBuffer.toString('base64');
       processedMimeType = 'image/jpeg';
-      
-      console.log('Image reprocessed for OpenAI compatibility, new size:', processedImageBase64.length);
+
+      console.log(`Image converted from ${imageInfo.format} to JPEG for OpenAI compatibility, new size:`, processedImageBase64.length);
     }
   } catch (sharpError) {
     console.error('Image validation failed:', sharpError);
@@ -181,7 +184,7 @@ Be thorough but concise. Provide realistic confidence scores based on image qual
     });
 
     const processingTime = (Date.now() - startTime) / 1000;
-    
+
     // Enhanced logging to debug OpenAI response issues
     console.log('OpenAI response details:', {
       choices: response.choices?.length || 0,
@@ -201,7 +204,7 @@ Be thorough but concise. Provide realistic confidence scores based on image qual
     try {
       // Parse JSON response (should be clean JSON due to response_format)
       const rawResult = JSON.parse(content);
-      
+
       // Validate the response structure
       const validatedResult = validateAIResponse(rawResult);
 
@@ -216,20 +219,20 @@ Be thorough but concise. Provide realistic confidence scores based on image qual
 
   } catch (error: any) {
     console.error('OpenAI API error:', error);
-    
+
     // Provide more specific error messages for common OpenAI errors
     if (error?.code === 'image_parse_error') {
       throw new Error('Image could not be processed by AI. Please upload a clear, well-lit photo of the laptop taken from a normal distance (not too close). Ensure the image is in JPEG or PNG format and shows the laptop clearly against a plain background.');
     }
-    
+
     if (error?.message?.includes('unsupported image') || error?.message?.includes('invalid image')) {
       throw new Error('Image format issue. Please upload a standard JPEG or PNG photo of the laptop. Avoid screenshots, very small images, or corrupted files. Take a clear photo with good lighting.');
     }
-    
+
     if (error?.status === 400 && error?.message?.includes('image')) {
       throw new Error('Image quality issue. Please take a new photo of the laptop with: 1) Good lighting, 2) Clear focus, 3) Normal distance (not too close), 4) Plain background. Save as JPEG or PNG format.');
     }
-    
+
     throw new Error(`AI assessment failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
@@ -249,7 +252,7 @@ export async function assessLaptopDamageFromVideo(videoBuffer: Buffer): Promise<
   try {
     // Extract frames from video
     const frameResult: VideoFrameExtractionResult = await extractVideoFrames(videoBuffer, 3);
-    
+
     if (!frameResult.success || frameResult.frames.length === 0) {
       throw new Error(frameResult.error || 'Failed to extract frames from video');
     }
@@ -314,7 +317,7 @@ Note: Confidence should reflect both the assessment certainty and the limitation
     });
 
     const processingTime = (Date.now() - startTime) / 1000;
-    
+
     // Enhanced logging to debug OpenAI response issues
     console.log('OpenAI response details:', {
       choices: response.choices?.length || 0,
@@ -333,7 +336,7 @@ Note: Confidence should reflect both the assessment certainty and the limitation
 
     try {
       const rawResult = JSON.parse(content);
-      
+
       // Validate the response structure
       const validatedResult = validateAIResponse(rawResult);
 
