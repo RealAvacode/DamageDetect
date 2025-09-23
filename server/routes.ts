@@ -166,12 +166,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
     } catch (error) {
-      console.error('Assessment error details:', {
+      console.error('=== ASSESSMENT ERROR ===');
+      console.error('Error details:', {
         message: error instanceof Error ? error.message : 'Unknown error',
         stack: error instanceof Error ? error.stack : undefined,
         name: error instanceof Error ? error.name : 'UnknownError',
         fullError: error
       });
+      console.error('========================');
       
       // Provide more specific error messages based on error type
       let userMessage = 'Unknown error';
