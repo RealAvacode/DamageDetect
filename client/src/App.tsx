@@ -6,7 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { Button } from "@/components/ui/button";
 import { Link, useLocation } from "wouter";
 import ThemeToggle from "@/components/ThemeToggle";
-import { Monitor, Database, MessageSquare } from "lucide-react";
+import { Monitor, Database, Home } from "lucide-react";
 import HomePage from "@/pages/home";
 import SearchPage from "@/pages/search";
 import NotFound from "@/pages/not-found";
@@ -16,8 +16,8 @@ function Navigation() {
   const [location] = useLocation();
   
   const navItems = [
-    { path: "/", label: "AI Assistant", icon: MessageSquare },
-    { path: "/search", label: "Records", icon: Database }
+    { path: "/", label: "Assessment", icon: Home },
+    { path: "/search", label: "Database", icon: Database }
   ];
 
   return (
@@ -27,7 +27,7 @@ function Navigation() {
           {/* Logo/Brand */}
           <Link href="/" className="flex items-center gap-2 font-semibold text-lg hover-elevate">
             <Monitor className="h-6 w-6 text-primary" />
-            <span>AI Laptop Diagnostics</span>
+            <span>Laptop Assessment System</span>
           </Link>
 
           {/* Navigation Links */}

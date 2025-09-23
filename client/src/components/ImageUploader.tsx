@@ -2,96 +2,64 @@ import { useState, useCallback } from "react";
 import { useDropzone } from "react-dropzone";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Upload, X, Image as ImageIcon, Video } from "lucide-react";
+import { Upload, X, Image as ImageIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-interface MediaUploaderProps {
-  onFilesSelected: (files: File[]) => void;
+interface ImageUploaderProps {
+  onImagesSelected: (files: File[]) => void;
   maxFiles?: number;
   className?: string;
   disabled?: boolean;
-  acceptedTypes?: 'images' | 'videos' | 'both';
 }
 
-export default function MediaUploader({ 
-  onFilesSelected, 
+export default function ImageUploader({ 
+  onImagesSelected, 
   maxFiles = 5, 
   className,
-  disabled = false,
-  acceptedTypes = 'both'
-}: MediaUploaderProps) {
-  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
+  disabled = false 
+}: ImageUploaderProps) {
+  const [selectedImages, setSelectedImages] = useState<File[]>([]);
   const [previews, setPreviews] = useState<string[]>([]);
-  const [fileTypes, setFileTypes] = useState<('image' | 'video')[]>([]);
 
   const onDrop = useCallback((acceptedFiles: File[]) => {
     if (disabled) return;
     
-    const validFiles = acceptedFiles.filter(file => {
-      const isImage = file.type.startsWith('image/') || 
-                     // Handle HEIC files which browsers sometimes report as application/octet-stream
-                     (file.type === 'application/octet-stream' && file.name.match(/\.(heic|heif)$/i));
-      const isVideo = file.type.startsWith('video/');
-      
-      if (acceptedTypes === 'images') return isImage;
-      if (acceptedTypes === 'videos') return isVideo;
-      return isImage || isVideo;
-    });
+    const imageFiles = acceptedFiles.filter(file => file.type.startsWith('image/'));
+    const newImages = [...selectedImages, ...imageFiles].slice(0, maxFiles);
     
-    const newFiles = [...selectedFiles, ...validFiles].slice(0, maxFiles);
+    setSelectedImages(newImages);
+    onImagesSelected(newImages);
     
-    setSelectedFiles(newFiles);
-    onFilesSelected(newFiles);
-    
-    // Create previews and track file types
-    const newPreviews = newFiles.map(file => URL.createObjectURL(file));
-    const newFileTypes = newFiles.map(file => 
-      (file.type.startsWith('image/') || 
-       (file.type === 'application/octet-stream' && file.name.match(/\.(heic|heif)$/i))) ? 'image' : 'video'
-    );
-    
+    // Create previews
+    const newPreviews = newImages.map(file => URL.createObjectURL(file));
     setPreviews(current => {
       // Cleanup old URLs
       current.forEach(url => URL.revokeObjectURL(url));
       return newPreviews;
     });
-    setFileTypes(newFileTypes);
-  }, [selectedFiles, maxFiles, onFilesSelected, disabled, acceptedTypes]);
+  }, [selectedImages, maxFiles, onImagesSelected, disabled]);
 
-  const removeFile = (index: number) => {
+  const removeImage = (index: number) => {
     if (disabled) return;
     
-    const newFiles = selectedFiles.filter((_, i) => i !== index);
-    setSelectedFiles(newFiles);
-    onFilesSelected(newFiles);
+    const newImages = selectedImages.filter((_, i) => i !== index);
+    setSelectedImages(newImages);
+    onImagesSelected(newImages);
     
     // Cleanup old URL and create new previews
     URL.revokeObjectURL(previews[index]);
-    const newPreviews = newFiles.map(file => URL.createObjectURL(file));
-    const newFileTypes = newFiles.map(file => 
-      (file.type.startsWith('image/') || 
-       (file.type === 'application/octet-stream' && file.name.match(/\.(heic|heif)$/i))) ? 'image' : 'video'
-    );
-    
+    const newPreviews = newImages.map(file => URL.createObjectURL(file));
     setPreviews(current => {
       current.forEach(url => URL.revokeObjectURL(url));
       return newPreviews;
     });
-    setFileTypes(newFileTypes);
-  };
-
-  const getAcceptTypes = () => {
-    const imageTypes = { 'image/*': ['.jpeg', '.jpg', '.png', '.webp', '.gif', '.heic', '.heif'] };
-    const videoTypes = { 'video/*': ['.mp4', '.webm', '.mov', '.avi', '.mkv'] };
-    
-    if (acceptedTypes === 'images') return imageTypes;
-    if (acceptedTypes === 'videos') return videoTypes;
-    return { ...imageTypes, ...videoTypes };
   };
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
     onDrop,
-    accept: getAcceptTypes(),
+    accept: {
+      'image/*': ['.jpeg', '.jpg', '.png', '.webp']
+    },
     maxFiles,
     disabled
   });
@@ -101,77 +69,47 @@ export default function MediaUploader({
       <Card
         {...getRootProps()}
         className={cn(
-          "border-2 border-dashed p-6 cursor-pointer transition-colors hover-elevate relative",
+          "border-2 border-dashed p-6 cursor-pointer transition-colors hover-elevate",
           isDragActive && "border-primary bg-primary/5",
           disabled && "cursor-not-allowed opacity-50"
         )}
-        data-testid="media-uploader-dropzone"
+        data-testid="image-uploader-dropzone"
       >
-        <input {...getInputProps()} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
+        <input {...getInputProps()} />
         <div className="flex flex-col items-center justify-center text-center space-y-2">
           <Upload className="h-8 w-8 text-muted-foreground" />
           <div className="text-sm">
             {isDragActive ? (
-              <p>Drop the files here...</p>
+              <p>Drop the images here...</p>
             ) : (
               <>
                 <p><span className="font-medium">Click to upload</span> or drag and drop</p>
-                {acceptedTypes === 'images' && (
-                  <p className="text-muted-foreground">PNG, JPG, WEBP, HEIC up to 10MB each</p>
-                )}
-                {acceptedTypes === 'videos' && (
-                  <p className="text-muted-foreground">MP4, WEBM, MOV up to 50MB each</p>
-                )}
-                {acceptedTypes === 'both' && (
-                  <p className="text-muted-foreground">Images (PNG, JPG, WEBP, HEIC) or Videos (MP4, WEBM, MOV)</p>
-                )}
-                <p className="text-muted-foreground">Maximum {maxFiles} files</p>
+                <p className="text-muted-foreground">PNG, JPG, WEBP up to 10MB each</p>
+                <p className="text-muted-foreground">Maximum {maxFiles} images</p>
               </>
             )}
           </div>
         </div>
       </Card>
 
-      {selectedFiles.length > 0 && (
+      {selectedImages.length > 0 && (
         <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {previews.map((preview, index) => (
             <div key={index} className="relative group">
               <Card className="p-2 hover-elevate">
-                <div className="relative">
-                  {fileTypes[index] === 'image' ? (
-                    <img
-                      src={preview}
-                      alt={`Preview ${index + 1}`}
-                      className="w-full h-24 object-cover rounded-md"
-                      data-testid={`preview-image-${index}`}
-                    />
-                  ) : (
-                    <div className="relative">
-                      <video
-                        src={preview}
-                        className="w-full h-24 object-cover rounded-md"
-                        data-testid={`preview-video-${index}`}
-                      />
-                      <div className="absolute inset-0 flex items-center justify-center bg-black/20 rounded-md">
-                        <Video className="h-6 w-6 text-white" />
-                      </div>
-                    </div>
-                  )}
-                  <div className="absolute top-1 left-1">
-                    {fileTypes[index] === 'image' ? (
-                      <ImageIcon className="h-3 w-3 text-white bg-black/50 rounded p-0.5" />
-                    ) : (
-                      <Video className="h-3 w-3 text-white bg-black/50 rounded p-0.5" />
-                    )}
-                  </div>
-                </div>
+                <img
+                  src={preview}
+                  alt={`Preview ${index + 1}`}
+                  className="w-full h-24 object-cover rounded-md"
+                  data-testid={`preview-image-${index}`}
+                />
                 <Button
                   size="icon"
                   variant="destructive"
                   className="absolute -top-2 -right-2 h-6 w-6 rounded-full opacity-0 group-hover:opacity-100 transition-opacity"
-                  onClick={() => removeFile(index)}
+                  onClick={() => removeImage(index)}
                   disabled={disabled}
-                  data-testid={`remove-file-${index}`}
+                  data-testid={`remove-image-${index}`}
                 >
                   <X className="h-3 w-3" />
                 </Button>
