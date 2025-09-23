@@ -138,9 +138,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
           let aiResult;
 
           if (isImage) {
-            // Process image file
-            const imageBase64 = fileToBase64(file.buffer);
-            aiResult = await assessLaptopDamage(imageBase64, file.mimetype);
+            // Process image file with error handling
+            try {
+              const imageBase64 = fileToBase64(file.buffer);
+              aiResult = await assessLaptopDamage(imageBase64, file.mimetype);
+            } catch (imageError) {
+              console.error('Image AI assessment failed:', imageError);
+              // Fallback assessment for image processing failures
+              aiResult = {
+                grade: 'C' as const,
+                confidence: 0.3,
+                overallCondition: `AI assessment failed: ${imageError instanceof Error ? imageError.message : 'Unknown error'}`,
+                damageTypes: ['AI Processing Error'],
+                detailedFindings: [{
+                  category: 'Overall Structure' as const,
+                  severity: 'Medium' as const,
+                  description: `Image assessment could not be completed automatically. Error: ${imageError instanceof Error ? imageError.message : 'Unknown error'}. Manual review required.`
+                }],
+                processingTime: 0.1
+              };
+            }
           } else {
             // Process video file using frame extraction and AI analysis
             try {
