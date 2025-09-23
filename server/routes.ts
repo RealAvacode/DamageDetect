@@ -102,7 +102,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const results = [];
-      
+
       // Process all uploaded files
       for (const file of files) {
         try {
@@ -163,6 +163,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
 
+          // Ensure aiResult exists and has required properties
+          if (!aiResult || !aiResult.grade) {
+            throw new Error('AI assessment failed to return valid results');
+          }
+
           // Create assessment record with unique SKU per file
           const assessmentData = {
             sku: `AUTO-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Unique SKU per file
@@ -188,7 +193,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           };
 
           const assessment = await storage.createAssessment(assessmentData);
-          
+
           results.push({
             originalFileName: file.originalname,
             success: true,
@@ -232,6 +237,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           userMessage = 'Database error occurred while saving assessment. Please try again.';
         } else if (error.message.includes('network') || error.message.includes('fetch')) {
           userMessage = 'Network error occurred. Please check your connection and try again.';
+        } else if (error.message.includes('AI assessment failed to return valid results')) {
+          userMessage = 'AI assessment failed. Please ensure the uploaded file is valid or try again.';
         }
       }
 
@@ -306,6 +313,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             }
           }
 
+          // Ensure aiResult exists and has required properties
+          if (!aiResult || !aiResult.grade) {
+            throw new Error('AI assessment failed to return valid results');
+          }
+
           // Create assessment record with unique SKU per file
           const assessmentData = {
             sku: `AUTO-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Unique SKU per file
@@ -371,6 +383,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           userMessage = 'Database error occurred while saving assessment. Please try again.';
         } else if (error.message.includes('network') || error.message.includes('fetch')) {
           userMessage = 'Network error occurred. Please check your connection and try again.';
+        } else if (error.message.includes('AI assessment failed to return valid results')) {
+          userMessage = 'AI assessment failed. Please ensure the uploaded file is valid or try again.';
         }
       }
 
