@@ -96,10 +96,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Validate minimum file size for images
-      if (isImage && file.size < 1000) { // Minimum 1KB for meaningful image analysis
+      if (isImage && file.size < 100) { // Minimum 100 bytes - very permissive
         return res.status(400).json({ 
           error: 'Image too small', 
-          message: 'Image must be at least 1KB and have meaningful content for analysis. Please upload a larger, clearer image of the laptop.'
+          message: 'Image file appears to be corrupted or empty. Please try uploading a different image.'
         });
       }
       
@@ -166,14 +166,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
     } catch (error) {
-      console.error('=== ASSESSMENT ERROR ===');
-      console.error('Error details:', {
+      console.error('Assessment error details:', {
         message: error instanceof Error ? error.message : 'Unknown error',
         stack: error instanceof Error ? error.stack : undefined,
         name: error instanceof Error ? error.name : 'UnknownError',
         fullError: error
       });
-      console.error('========================');
       
       // Provide more specific error messages based on error type
       let userMessage = 'Unknown error';

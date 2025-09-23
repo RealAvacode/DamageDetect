@@ -73,12 +73,20 @@ export async function assessLaptopDamage(imageBase64: string, mimeType: string =
   console.log('- Data URL header:', `data:${mimeType};base64,`);
 
   // Validate image format and size
-  if (!imageBase64 || imageBase64.length < 100) {
+  if (!imageBase64 || imageBase64.length < 50) {
     throw new Error('Image data is too small or corrupted. Please upload a clear, high-resolution image of the laptop.');
   }
 
+  // Clean up base64 string - remove any whitespace or invalid characters
+  const cleanBase64 = imageBase64.replace(/[^A-Za-z0-9+/=]/g, '');
+  
+  // Validate base64 format
+  if (cleanBase64.length % 4 !== 0) {
+    throw new Error('Invalid image data format. Please try uploading a different image.');
+  }
+
   // Convert HEIC files to JPEG for OpenAI compatibility
-  let processedImageBase64 = imageBase64;
+  let processedImageBase64 = cleanBase64;
   let processedMimeType = mimeType;
   
   if (mimeType.toLowerCase() === 'image/heic' || mimeType.toLowerCase() === 'image/heif') {
@@ -102,6 +110,35 @@ export async function assessLaptopDamage(imageBase64: string, mimeType: string =
   const openAISupportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
   if (!openAISupportedTypes.includes(processedMimeType.toLowerCase())) {
     throw new Error(`Image format '${processedMimeType}' is not supported by the AI vision system. Please upload a JPEG, PNG, GIF, or WebP image.`);
+  }
+
+  // Validate and potentially reprocess image with Sharp to ensure it's valid
+  try {
+    const imageBuffer = Buffer.from(processedImageBase64, 'base64');
+    const imageInfo = await sharp(imageBuffer).metadata();
+    
+    console.log('Image validation:', {
+      width: imageInfo.width,
+      height: imageInfo.height,
+      format: imageInfo.format,
+      size: imageBuffer.length
+    });
+
+    // If image is valid but might have issues, reprocess it
+    if (imageInfo.format && ['jpeg', 'png', 'webp', 'gif'].includes(imageInfo.format)) {
+      // Convert to high-quality JPEG to ensure OpenAI compatibility
+      const reprocessedBuffer = await sharp(imageBuffer)
+        .jpeg({ quality: 95, mozjpeg: true })
+        .toBuffer();
+      
+      processedImageBase64 = reprocessedBuffer.toString('base64');
+      processedMimeType = 'image/jpeg';
+      
+      console.log('Image reprocessed for OpenAI compatibility, new size:', processedImageBase64.length);
+    }
+  } catch (sharpError) {
+    console.error('Image validation failed:', sharpError);
+    throw new Error('Invalid or corrupted image file. Please upload a different image.');
   }
 
   try {
