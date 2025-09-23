@@ -101,13 +101,13 @@ export default function MediaUploader({
       <Card
         {...getRootProps()}
         className={cn(
-          "border-2 border-dashed p-6 cursor-pointer transition-colors hover-elevate",
+          "border-2 border-dashed p-6 cursor-pointer transition-colors hover-elevate relative",
           isDragActive && "border-primary bg-primary/5",
           disabled && "cursor-not-allowed opacity-50"
         )}
         data-testid="media-uploader-dropzone"
       >
-        <input {...getInputProps()} />
+        <input {...getInputProps()} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10" />
         <div className="flex flex-col items-center justify-center text-center space-y-2">
           <Upload className="h-8 w-8 text-muted-foreground" />
           <div className="text-sm">

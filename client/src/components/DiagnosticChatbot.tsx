@@ -628,7 +628,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
         
         {/* File Upload Area */}
         {showUploader && (
-          <div className="p-4 border-t bg-muted/30">
+          <div className="p-4 border-t bg-muted/30 relative z-20">
             <MediaUploader
               onFilesSelected={handleFilesSelected}
               maxFiles={1}
@@ -640,6 +640,7 @@ export default function DiagnosticChatbot({ className }: DiagnosticChatbotProps)
                 variant="outline"
                 size="sm"
                 onClick={() => setShowUploader(false)}
+                data-testid="cancel-upload"
               >
                 Cancel
               </Button>
