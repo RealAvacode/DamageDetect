@@ -101,90 +101,115 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ error: 'No files uploaded' });
       }
 
-      // Get the first file for analysis
-      const file = files[0];
-      const isImage = file.mimetype.startsWith('image/') || 
-                     // Handle HEIC files which sometimes appear as application/octet-stream
-                     (file.mimetype === 'application/octet-stream' && file.originalname.match(/\.(heic|heif)$/i));
-      const isVideo = file.mimetype.startsWith('video/') || 
-                     file.mimetype === 'application/mp4' ||
-                     file.mimetype === 'video/x-mp4' ||
-                     (file.mimetype === 'application/octet-stream' && file.originalname.match(/\.(mp4|webm|mov|avi|mkv)$/i));
-
-      console.log(`Processing file: ${file.originalname}, MIME: ${file.mimetype}, isImage: ${isImage}, isVideo: ${isVideo}`);
-
-      if (!isImage && !isVideo) {
-        return res.status(400).json({ error: 'Invalid file type' });
-      }
-
-      // Validate minimum file size for images
-      if (isImage && file.size < 100) { // Minimum 100 bytes - very permissive
-        return res.status(400).json({ 
-          error: 'Image too small', 
-          message: 'Image file appears to be corrupted or empty. Please try uploading a different image.'
-        });
-      }
-
-      let aiResult;
-
-      if (isImage) {
-        // Process image file
-        const imageBase64 = fileToBase64(file.buffer);
-        aiResult = await assessLaptopDamage(imageBase64, file.mimetype);
-      } else {
-        // Process video file using frame extraction and AI analysis
+      const results = [];
+      
+      // Process all uploaded files
+      for (const file of files) {
         try {
-          aiResult = await assessLaptopDamageFromVideo(file.buffer);
-        } catch (videoError) {
-          console.error('Video processing failed:', videoError);
-          // Fallback assessment for video processing failures
-          aiResult = {
-            grade: 'C' as const,
-            confidence: 0.3,
-            overallCondition: `Video processing failed: ${videoError instanceof Error ? videoError.message : 'Unknown error'}`,
-            damageTypes: ['Video Processing Error'],
-            detailedFindings: [{
-              category: 'Overall Structure' as const,
-              severity: 'Medium' as const,
-              description: `Video assessment could not be completed automatically. Error: ${videoError instanceof Error ? videoError.message : 'Unknown error'}. Manual review required.`
-            }],
-            processingTime: 0.1
+          const isImage = file.mimetype.startsWith('image/') || 
+                         // Handle HEIC files which sometimes appear as application/octet-stream
+                         (file.mimetype === 'application/octet-stream' && file.originalname.match(/\.(heic|heif)$/i));
+          const isVideo = file.mimetype.startsWith('video/') || 
+                         file.mimetype === 'application/mp4' ||
+                         file.mimetype === 'video/x-mp4' ||
+                         (file.mimetype === 'application/octet-stream' && file.originalname.match(/\.(mp4|webm|mov|avi|mkv)$/i));
+
+          console.log(`Processing file: ${file.originalname}, MIME: ${file.mimetype}, isImage: ${isImage}, isVideo: ${isVideo}`);
+
+          if (!isImage && !isVideo) {
+            results.push({
+              originalFileName: file.originalname,
+              success: false,
+              error: 'Invalid file type'
+            });
+            continue;
+          }
+
+          // Validate minimum file size for images
+          if (isImage && file.size < 100) { // Minimum 100 bytes - very permissive
+            results.push({
+              originalFileName: file.originalname,
+              success: false,
+              error: 'Image file appears to be corrupted or empty.'
+            });
+            continue;
+          }
+
+          let aiResult;
+
+          if (isImage) {
+            // Process image file
+            const imageBase64 = fileToBase64(file.buffer);
+            aiResult = await assessLaptopDamage(imageBase64, file.mimetype);
+          } else {
+            // Process video file using frame extraction and AI analysis
+            try {
+              aiResult = await assessLaptopDamageFromVideo(file.buffer);
+            } catch (videoError) {
+              console.error('Video processing failed:', videoError);
+              // Fallback assessment for video processing failures
+              aiResult = {
+                grade: 'C' as const,
+                confidence: 0.3,
+                overallCondition: `Video processing failed: ${videoError instanceof Error ? videoError.message : 'Unknown error'}`,
+                damageTypes: ['Video Processing Error'],
+                detailedFindings: [{
+                  category: 'Overall Structure' as const,
+                  severity: 'Medium' as const,
+                  description: `Video assessment could not be completed automatically. Error: ${videoError instanceof Error ? videoError.message : 'Unknown error'}. Manual review required.`
+                }],
+                processingTime: 0.1
+              };
+            }
+          }
+
+          // Create assessment record with unique SKU per file
+          const assessmentData = {
+            sku: `AUTO-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`, // Unique SKU per file
+            brand: null,
+            model: null,
+            grade: aiResult.grade,
+            confidence: aiResult.confidence,
+            damageDescription: aiResult.overallCondition,
+            detailedFindings: aiResult.detailedFindings,
+            damageTypes: aiResult.damageTypes,
+            imageUrl: null, // TODO: Store in object storage
+            fileType: isImage ? 'image' : 'video',
+            originalFileName: file.originalname,
+            mimeType: file.mimetype,
+            fileSize: file.size,
+            processingTime: aiResult.processingTime,
+            // Video metadata fields (null for images)
+            videoDuration: aiResult.videoMetadata?.duration || null,
+            videoWidth: aiResult.videoMetadata?.width || null,
+            videoHeight: aiResult.videoMetadata?.height || null,
+            videoFps: aiResult.videoMetadata?.fps || null,
+            framesAnalyzed: aiResult.videoMetadata?.framesAnalyzed || null
           };
+
+          const assessment = await storage.createAssessment(assessmentData);
+          
+          results.push({
+            originalFileName: file.originalname,
+            success: true,
+            assessment: {
+              ...assessment,
+              ...aiResult
+            }
+          });
+        } catch (fileError) {
+          console.error(`Error processing file ${file.originalname}:`, fileError);
+          results.push({
+            originalFileName: file.originalname,
+            success: false,
+            error: fileError instanceof Error ? fileError.message : 'Unknown processing error'
+          });
         }
       }
-
-      // Create assessment record
-      const assessmentData = {
-        sku: `AUTO-${Date.now()}`, // Generate SKU if not provided
-        brand: null,
-        model: null,
-        grade: aiResult.grade,
-        confidence: aiResult.confidence,
-        damageDescription: aiResult.overallCondition,
-        detailedFindings: aiResult.detailedFindings,
-        damageTypes: aiResult.damageTypes,
-        imageUrl: null, // TODO: Store in object storage
-        fileType: isImage ? 'image' : 'video',
-        originalFileName: file.originalname,
-        mimeType: file.mimetype,
-        fileSize: file.size,
-        processingTime: aiResult.processingTime,
-        // Video metadata fields (null for images)
-        videoDuration: aiResult.videoMetadata?.duration || null,
-        videoWidth: aiResult.videoMetadata?.width || null,
-        videoHeight: aiResult.videoMetadata?.height || null,
-        videoFps: aiResult.videoMetadata?.fps || null,
-        framesAnalyzed: aiResult.videoMetadata?.framesAnalyzed || null
-      };
-
-      const assessment = await storage.createAssessment(assessmentData);
 
       res.json({
         success: true,
-        assessment: {
-          ...assessment,
-          ...aiResult
-        }
+        results: results
       });
 
     } catch (error) {
