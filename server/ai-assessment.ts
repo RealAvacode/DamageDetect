@@ -85,31 +85,14 @@ export async function assessLaptopDamage(imageBase64: string, mimeType: string =
     throw new Error('Invalid image data format. Please try uploading a different image.');
   }
 
-  // Convert HEIC files to JPEG for OpenAI compatibility
+  // Handle HEIC files - OpenAI Vision API supports HEIC directly
   let processedImageBase64 = cleanBase64;
   let processedMimeType = mimeType;
   
-  if (mimeType.toLowerCase() === 'image/heic' || mimeType.toLowerCase() === 'image/heif') {
-    try {
-      console.log('Converting HEIC/HEIF to JPEG for OpenAI compatibility...');
-      const imageBuffer = Buffer.from(imageBase64, 'base64');
-      const jpegBuffer = await sharp(imageBuffer)
-        .jpeg({ quality: 90 }) // High quality JPEG conversion
-        .toBuffer();
-      
-      processedImageBase64 = jpegBuffer.toString('base64');
-      processedMimeType = 'image/jpeg';
-      console.log('HEIC conversion successful. New JPEG size:', processedImageBase64.length);
-    } catch (conversionError) {
-      console.error('HEIC conversion failed:', conversionError);
-      throw new Error('HEIC image conversion failed. Please try converting your HEIC file to JPEG manually, or use a different image format.');
-    }
-  }
-
-  // Ensure MIME type is supported by OpenAI Vision API (after potential conversion)
-  const openAISupportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
+  // Ensure MIME type is supported by OpenAI Vision API
+  const openAISupportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif'];
   if (!openAISupportedTypes.includes(processedMimeType.toLowerCase())) {
-    throw new Error(`Image format '${processedMimeType}' is not supported by the AI vision system. Please upload a JPEG, PNG, GIF, or WebP image.`);
+    throw new Error(`Image format '${processedMimeType}' is not supported by the AI vision system. Please upload a JPEG, PNG, GIF, WebP, or HEIC image.`);
   }
 
   // Validate and potentially reprocess image with Sharp to ensure it's valid
