@@ -85,7 +85,7 @@ export async function assessLaptopDamage(imageBase64: string, mimeType: string =
     throw new Error('Invalid image data format. Please try uploading a different image.');
   }
 
-  // Handle HEIC files - OpenAI Vision API supports HEIC directly
+  // Handle all image formats - convert to JPEG for OpenAI compatibility
   let processedImageBase64 = cleanBase64;
   let processedMimeType = mimeType;
 
@@ -101,46 +101,30 @@ export async function assessLaptopDamage(imageBase64: string, mimeType: string =
   // Validate and potentially reprocess image with Sharp to ensure it's valid
   try {
     const imageBuffer = Buffer.from(processedImageBase64, 'base64');
-    
-    // Special handling for HEIC files - OpenAI supports them directly
-    if (mimeType.toLowerCase().includes('heic') || mimeType.toLowerCase().includes('heif')) {
-      console.log('HEIC file detected - sending directly to OpenAI without conversion');
-      // Keep original HEIC format for OpenAI
-      processedMimeType = 'image/heic';
-    } else {
-      // For other formats, try to validate and convert
-      const imageInfo = await sharp(imageBuffer).metadata();
+    const imageInfo = await sharp(imageBuffer).metadata();
 
-      console.log('Image validation:', {
-        width: imageInfo.width,
-        height: imageInfo.height,
-        format: imageInfo.format,
-        size: imageBuffer.length
-      });
+    console.log('Image validation:', {
+      width: imageInfo.width,
+      height: imageInfo.height,
+      format: imageInfo.format,
+      size: imageBuffer.length
+    });
 
-      // Convert non-HEIC images to JPEG for OpenAI compatibility
-      if (imageInfo.format && imageInfo.format !== 'heif') {
-        // Convert to high-quality JPEG to ensure OpenAI compatibility
-        const reprocessedBuffer = await sharp(imageBuffer)
-          .jpeg({ quality: 95, mozjpeg: true })
-          .toBuffer();
+    // Convert ALL images to JPEG for OpenAI compatibility
+    if (imageInfo.format) {
+      // Convert to high-quality JPEG to ensure OpenAI compatibility
+      const reprocessedBuffer = await sharp(imageBuffer)
+        .jpeg({ quality: 95, mozjpeg: true })
+        .toBuffer();
 
-        processedImageBase64 = reprocessedBuffer.toString('base64');
-        processedMimeType = 'image/jpeg';
+      processedImageBase64 = reprocessedBuffer.toString('base64');
+      processedMimeType = 'image/jpeg';
 
-        console.log(`Image converted from ${imageInfo.format} to JPEG for OpenAI compatibility, new size:`, processedImageBase64.length);
-      }
+      console.log(`Image converted from ${imageInfo.format} to JPEG for OpenAI compatibility, new size:`, processedImageBase64.length);
     }
   } catch (sharpError) {
     console.error('Image validation failed:', sharpError);
-    
-    // For HEIC files, if Sharp fails, still try with OpenAI directly
-    if (mimeType.toLowerCase().includes('heic') || mimeType.toLowerCase().includes('heif')) {
-      console.log('Sharp failed on HEIC, but trying OpenAI directly since it supports HEIC natively');
-      processedMimeType = 'image/heic';
-    } else {
-      throw new Error('Invalid or corrupted image file. Please upload a different image.');
-    }
+    throw new Error('Invalid or corrupted image file. Please upload a different image.');
   }
 
   try {
