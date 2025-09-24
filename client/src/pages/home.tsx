@@ -22,24 +22,44 @@ export default function Home() {
     setIsAssessing(true);
     
     try {
+      console.log('Starting assessment with', selectedImages.length, 'images');
+      
       const formData = new FormData();
       selectedImages.forEach(file => {
+        console.log('Adding file to form data:', file.name, file.type, file.size);
         formData.append('images', file);
       });
 
+      console.log('Making API request to /api/assessments');
       const response = await fetch('/api/assessments', {
         method: 'POST',
         body: formData,
       });
 
+      console.log('Response received:', response.status, response.statusText);
+
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Assessment failed');
+        console.log('Response not OK, attempting to parse error');
+        let errorMessage = 'Assessment failed';
+        try {
+          const error = await response.json();
+          console.log('Error response:', error);
+          errorMessage = error.message || error.error || 'Assessment failed';
+        } catch (parseError) {
+          console.log('Could not parse error response as JSON:', parseError);
+          const textError = await response.text();
+          console.log('Error response as text:', textError);
+          errorMessage = textError || `HTTP ${response.status}: ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
 
+      console.log('Parsing successful response');
       const result = await response.json();
+      console.log('API result:', result);
       
       if (result.success) {
+        console.log('Assessment successful, processing result');
         const assessmentData: AssessmentData = {
           grade: result.assessment.grade,
           confidence: result.assessment.confidence,
@@ -52,12 +72,27 @@ export default function Home() {
         
         setAssessmentResult(assessmentData);
       } else {
-        throw new Error('Assessment failed');
+        console.log('Result success was false');
+        throw new Error(result.message || 'Assessment failed');
       }
     } catch (error) {
       console.error('Assessment error:', error);
-      // Show error to user - for now just log, but could add toast notification
-      alert(`Assessment failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      console.error('Error details:', {
+        message: error instanceof Error ? error.message : 'Unknown error',
+        stack: error instanceof Error ? error.stack : undefined,
+        type: typeof error,
+        fullError: error
+      });
+      
+      // Show error to user with more detailed information
+      let errorMessage = 'Unknown error';
+      if (error instanceof Error) {
+        errorMessage = error.message;
+      } else if (typeof error === 'string') {
+        errorMessage = error;
+      }
+      
+      alert(`Assessment failed: ${errorMessage}`);
     } finally {
       setIsAssessing(false);
     }
