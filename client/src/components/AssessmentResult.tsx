@@ -2,7 +2,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
-import { AlertTriangle, CheckCircle, Clock, Eye, Download } from "lucide-react";
+import { AlertTriangle, CheckCircle, Clock, Eye, Download, Video, Image, Play, Monitor } from "lucide-react";
 import GradeBadge, { Grade } from "./GradeBadge";
 import { cn } from "@/lib/utils";
 
@@ -17,7 +17,15 @@ export interface AssessmentData {
     description: string;
   }[];
   processingTime: number;
-  imageAnalyzed: string;
+  mediaUrl: string;
+  mediaType?: 'image' | 'video';
+  videoMetadata?: {
+    duration: number;
+    width: number;
+    height: number;
+    fps: number;
+    framesAnalyzed: number;
+  };
 }
 
 interface AssessmentResultProps {
@@ -61,7 +69,19 @@ export default function AssessmentResult({
       <Card>
         <CardHeader>
           <div className="flex items-center justify-between">
-            <CardTitle className="text-lg">Assessment Results</CardTitle>
+            <div className="flex items-center gap-2">
+              <CardTitle className="text-lg">Assessment Results</CardTitle>
+              <div className="flex items-center gap-1">
+                {assessment.mediaType === 'video' ? (
+                  <Video className="h-4 w-4 text-chart-4" data-testid="video-indicator" />
+                ) : (
+                  <Image className="h-4 w-4 text-chart-1" data-testid="image-indicator" />
+                )}
+                <Badge variant="outline" className="text-xs" data-testid={`media-type-${assessment.mediaType || 'image'}`}>
+                  {assessment.mediaType === 'video' ? 'Video Analysis' : 'Image Analysis'}
+                </Badge>
+              </div>
+            </div>
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Clock className="h-4 w-4" />
               Processed in {assessment.processingTime}s
@@ -131,20 +151,77 @@ export default function AssessmentResult({
         </CardContent>
       </Card>
 
-      {/* Image Preview */}
+      {/* Video Metadata */}
+      {assessment.mediaType === 'video' && assessment.videoMetadata && (
+        <Card data-testid="video-metadata-card">
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <Monitor className="h-4 w-4" />
+              Video Analysis Details
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div className="space-y-1">
+                <div className="text-muted-foreground">Duration</div>
+                <div className="font-medium" data-testid="video-duration">
+                  {assessment.videoMetadata.duration.toFixed(1)}s
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-muted-foreground">Resolution</div>
+                <div className="font-medium" data-testid="video-resolution">
+                  {assessment.videoMetadata.width} × {assessment.videoMetadata.height}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-muted-foreground">Frame Rate</div>
+                <div className="font-medium" data-testid="video-fps">
+                  {assessment.videoMetadata.fps.toFixed(1)} FPS
+                </div>
+              </div>
+              <div className="space-y-1">
+                <div className="text-muted-foreground">Frames Analyzed</div>
+                <div className="font-medium" data-testid="video-frames-analyzed">
+                  {assessment.videoMetadata.framesAnalyzed}
+                </div>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Media Preview */}
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Analyzed Image</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            {assessment.mediaType === 'video' ? (
+              <>
+                <Play className="h-4 w-4" />
+                Analyzed Video Frame
+              </>
+            ) : (
+              <>
+                <Image className="h-4 w-4" />
+                Analyzed Image
+              </>
+            )}
+          </CardTitle>
         </CardHeader>
         <CardContent>
           <div className="aspect-video bg-muted rounded-lg overflow-hidden">
             <img
-              src={assessment.imageAnalyzed}
-              alt="Analyzed laptop"
+              src={assessment.mediaUrl}
+              alt={assessment.mediaType === 'video' ? 'Analyzed video frame' : 'Analyzed laptop'}
               className="w-full h-full object-cover"
-              data-testid="analyzed-image"
+              data-testid={assessment.mediaType === 'video' ? 'analyzed-video-frame' : 'analyzed-image'}
             />
           </div>
+          {assessment.mediaType === 'video' && (
+            <p className="text-xs text-muted-foreground mt-2" data-testid="video-analysis-note">
+              Analysis performed on {assessment.videoMetadata?.framesAnalyzed || 'multiple'} frame(s) extracted from the video
+            </p>
+          )}
         </CardContent>
       </Card>
 

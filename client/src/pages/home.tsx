@@ -2,64 +2,51 @@ import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import ImageUploader from "@/components/ImageUploader";
+import { Badge } from "@/components/ui/badge";
+import MediaUploader from "@/components/ImageUploader";
 import AssessmentResult, { AssessmentData } from "@/components/AssessmentResult";
-import { Upload, Zap, Database, Search } from "lucide-react";
+import DiagnosticChatbot from "@/components/DiagnosticChatbot";
+import { Upload, Zap, Database, Search, MessageSquare, Bot } from "lucide-react";
+import { Link } from "wouter";
 
 export default function Home() {
-  const [selectedImages, setSelectedImages] = useState<File[]>([]);
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isAssessing, setIsAssessing] = useState(false);
   const [assessmentResult, setAssessmentResult] = useState<AssessmentData | null>(null);
 
-  const handleImagesSelected = (files: File[]) => {
-    setSelectedImages(files);
+  const handleFilesSelected = (files: File[]) => {
+    setSelectedFiles(files);
     setAssessmentResult(null);
   };
 
   const handleStartAssessment = async () => {
-    if (selectedImages.length === 0) return;
+    if (selectedFiles.length === 0) return;
     
     setIsAssessing(true);
     
     try {
-      console.log('Starting assessment with', selectedImages.length, 'images');
-      
       const formData = new FormData();
-      selectedImages.forEach(file => {
-        console.log('Adding file to form data:', file.name, file.type, file.size);
-        formData.append('images', file);
+      selectedFiles.forEach(file => {
+        formData.append('files', file);
       });
 
-      console.log('Making API request to /api/assessments');
       const response = await fetch('/api/assessments', {
         method: 'POST',
         body: formData,
       });
 
-      console.log('Response received:', response.status, response.statusText);
-
       if (!response.ok) {
-        console.log('Response not OK, attempting to parse error');
-        let errorMessage = 'Assessment failed';
-        try {
-          const error = await response.json();
-          console.log('Error response:', error);
-          errorMessage = error.message || error.error || 'Assessment failed';
-        } catch (parseError) {
-          console.log('Could not parse error response as JSON:', parseError);
-          const textError = await response.text();
-          console.log('Error response as text:', textError);
-          errorMessage = textError || `HTTP ${response.status}: ${response.statusText}`;
-        }
-        throw new Error(errorMessage);
+        const error = await response.json();
+        throw new Error(error.message || 'Assessment failed');
       }
 
-      console.log('Parsing successful response');
       const result = await response.json();
-      console.log('API result:', result);
       
       if (result.success) {
-        console.log('Assessment successful, processing result');
+        // Determine if this was a video or image assessment
+        const fileType = selectedFiles[0].type;
+        const isVideo = fileType.startsWith('video/');
+        
         const assessmentData: AssessmentData = {
           grade: result.assessment.grade,
           confidence: result.assessment.confidence,
@@ -67,32 +54,19 @@ export default function Home() {
           overallCondition: result.assessment.damageDescription || result.overallCondition,
           detailedFindings: result.assessment.detailedFindings || result.detailedFindings || [],
           processingTime: result.assessment.processingTime,
-          imageAnalyzed: URL.createObjectURL(selectedImages[0])
+          mediaUrl: URL.createObjectURL(selectedFiles[0]),
+          mediaType: isVideo ? 'video' : 'image',
+          videoMetadata: result.assessment.videoMetadata
         };
         
         setAssessmentResult(assessmentData);
       } else {
-        console.log('Result success was false');
-        throw new Error(result.message || 'Assessment failed');
+        throw new Error('Assessment failed');
       }
     } catch (error) {
       console.error('Assessment error:', error);
-      console.error('Error details:', {
-        message: error instanceof Error ? error.message : 'Unknown error',
-        stack: error instanceof Error ? error.stack : undefined,
-        type: typeof error,
-        fullError: error
-      });
-      
-      // Show error to user with more detailed information
-      let errorMessage = 'Unknown error';
-      if (error instanceof Error) {
-        errorMessage = error.message;
-      } else if (typeof error === 'string') {
-        errorMessage = error;
-      }
-      
-      alert(`Assessment failed: ${errorMessage}`);
+      // Show error to user - for now just log, but could add toast notification
+      alert(`Assessment failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setIsAssessing(false);
     }
@@ -124,17 +98,40 @@ export default function Home() {
       // Title
       doc.setFontSize(20);
       doc.setFont('helvetica', 'bold');
-      doc.text('Laptop Damage Assessment Report', pageWidth / 2, yPosition, { align: 'center' });
+      const reportTitle = assessment.mediaType === 'video' ? 
+        'Laptop Video Assessment Report' : 'Laptop Damage Assessment Report';
+      doc.text(reportTitle, pageWidth / 2, yPosition, { align: 'center' });
       yPosition += 15;
 
-      // Generated date
+      // Generated date and analysis type
       doc.setFontSize(10);
       doc.setFont('helvetica', 'normal');
       doc.text(`Generated: ${new Date().toLocaleString()}`, pageWidth / 2, yPosition, { align: 'center' });
-      yPosition += 20;
+      yPosition += 8;
+      doc.text(`Analysis Type: ${assessment.mediaType?.toUpperCase() || 'IMAGE'}`, pageWidth / 2, yPosition, { align: 'center' });
+      yPosition += 15;
 
-      // Add laptop image if available
-      if (assessment.imageAnalyzed) {
+      // Add video metadata if available
+      if (assessment.mediaType === 'video' && assessment.videoMetadata) {
+        doc.setFontSize(14);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Video Analysis Details', 20, yPosition);
+        yPosition += 10;
+
+        doc.setFontSize(11);
+        doc.setFont('helvetica', 'normal');
+        doc.text(`Duration: ${assessment.videoMetadata.duration.toFixed(1)}s`, 20, yPosition);
+        yPosition += 6;
+        doc.text(`Resolution: ${assessment.videoMetadata.width} × ${assessment.videoMetadata.height}`, 20, yPosition);
+        yPosition += 6;
+        doc.text(`Frame Rate: ${assessment.videoMetadata.fps.toFixed(1)} FPS`, 20, yPosition);
+        yPosition += 6;
+        doc.text(`Frames Analyzed: ${assessment.videoMetadata.framesAnalyzed}`, 20, yPosition);
+        yPosition += 15;
+      }
+
+      // Add laptop image/video frame if available
+      if (assessment.mediaUrl) {
         try {
           // Create a canvas to resize and process the image
           const canvas = document.createElement('canvas');
@@ -167,7 +164,7 @@ export default function Home() {
               resolve(null);
             };
             img.onerror = reject;
-            img.src = assessment.imageAnalyzed;
+            img.src = assessment.mediaUrl;
           });
           
           yPosition += 90;
@@ -282,7 +279,8 @@ export default function Home() {
       doc.text('Generated by Laptop Assessment System', pageWidth / 2, yPosition, { align: 'center' });
 
       // Save the PDF
-      const fileName = `laptop-assessment-${assessment.grade}-${Date.now()}.pdf`;
+      const filePrefix = assessment.mediaType === 'video' ? 'video-assessment' : 'laptop-assessment';
+      const fileName = `${filePrefix}-${assessment.grade}-${Date.now()}.pdf`;
       doc.save(fileName);
 
     } catch (error) {
@@ -292,106 +290,198 @@ export default function Home() {
   };
 
   return (
-    <div className="container mx-auto px-4 py-8 max-w-4xl">
+    <div className="container mx-auto px-4 py-8 max-w-7xl">
       {/* Header */}
       <div className="text-center mb-8">
-        <h1 className="text-3xl font-bold mb-2">Laptop Damage Assessment</h1>
-        <p className="text-muted-foreground">
-          Upload laptop images for AI-powered condition analysis and quality grading
+        <div className="flex items-center justify-center gap-3 mb-4">
+          <Bot className="h-10 w-10 text-primary" />
+          <h1 className="text-4xl font-bold">AI Diagnostic Assistant</h1>
+        </div>
+        <p className="text-xl text-muted-foreground mb-4">
+          Chat with our AI to diagnose laptop issues and get instant analysis
         </p>
+        <div className="flex items-center justify-center gap-2">
+          <Badge variant="default" className="px-3 py-1">
+            <MessageSquare className="h-3 w-3 mr-1" />
+            Conversational AI
+          </Badge>
+          <Badge variant="outline" className="px-3 py-1">
+            <Upload className="h-3 w-3 mr-1" />
+            Image & Video Analysis
+          </Badge>
+          <Badge variant="outline" className="px-3 py-1">
+            <Zap className="h-3 w-3 mr-1" />
+            Instant Results
+          </Badge>
+        </div>
       </div>
 
-      {/* Features Overview */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
-        <Card className="text-center p-4">
-          <Upload className="h-8 w-8 mx-auto mb-2 text-chart-4" />
-          <h3 className="font-medium mb-1">Upload Images</h3>
-          <p className="text-sm text-muted-foreground">Drag & drop or select laptop photos</p>
-        </Card>
-        <Card className="text-center p-4">
-          <Zap className="h-8 w-8 mx-auto mb-2 text-chart-2" />
-          <h3 className="font-medium mb-1">AI Analysis</h3>
-          <p className="text-sm text-muted-foreground">Advanced damage detection & grading</p>
-        </Card>
-        <Card className="text-center p-4">
-          <Database className="h-8 w-8 mx-auto mb-2 text-chart-1" />
-          <h3 className="font-medium mb-1">Searchable Database</h3>
-          <p className="text-sm text-muted-foreground">Store & retrieve assessment records</p>
-        </Card>
-      </div>
-
-      {/* Assessment Workflow */}
-      <Tabs defaultValue="upload" className="w-full">
-        <TabsList className="grid w-full grid-cols-2">
-          <TabsTrigger value="upload" data-testid="upload-tab">Upload & Assess</TabsTrigger>
-          <TabsTrigger value="search" data-testid="search-tab">
-            <Search className="h-4 w-4 mr-1" />
-            Search Records
-          </TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="upload" className="space-y-6">
+      {/* Main Content */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+        {/* Chatbot - Primary Interface */}
+        <div className="lg:col-span-2 space-y-6">
+          <DiagnosticChatbot className="w-full" />
+          
+          {/* Quick Start Guide */}
           <Card>
             <CardHeader>
-              <CardTitle>Upload Laptop Images</CardTitle>
+              <CardTitle className="flex items-center gap-2">
+                <Bot className="h-5 w-5" />
+                Quick Start Guide
+              </CardTitle>
             </CardHeader>
-            <CardContent>
-              <ImageUploader
-                onImagesSelected={handleImagesSelected}
-                maxFiles={5}
-                disabled={isAssessing}
-              />
-              
-              {selectedImages.length > 0 && !assessmentResult && (
-                <div className="mt-4 pt-4 border-t">
-                  <Button 
-                    onClick={handleStartAssessment}
-                    disabled={isAssessing}
-                    className="w-full"
-                    size="lg"
-                    data-testid="start-assessment"
-                  >
-                    {isAssessing ? (
-                      <>
-                        <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                        Analyzing Images...
-                      </>
-                    ) : (
-                      <>
-                        <Zap className="h-4 w-4 mr-2" />
-                        Start AI Assessment
-                      </>
-                    )}
-                  </Button>
+            <CardContent className="space-y-3">
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground text-sm flex items-center justify-center font-semibold">1</div>
+                <div>
+                  <p className="font-medium">Start a Conversation</p>
+                  <p className="text-sm text-muted-foreground">Ask about your laptop issues or describe what you're seeing</p>
                 </div>
-              )}
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground text-sm flex items-center justify-center font-semibold">2</div>
+                <div>
+                  <p className="font-medium">Upload Media</p>
+                  <p className="text-sm text-muted-foreground">Use the upload button in chat to share photos or videos</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary text-primary-foreground text-sm flex items-center justify-center font-semibold">3</div>
+                <div>
+                  <p className="font-medium">Get Instant Analysis</p>
+                  <p className="text-sm text-muted-foreground">Receive detailed diagnostic reports and recommendations</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* Sidebar - Traditional Options & Features */}
+        <div className="lg:col-span-1 space-y-6">
+          {/* Traditional Upload Option */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Upload className="h-5 w-5" />
+                Direct Upload
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Prefer the traditional approach? Upload files directly for analysis.
+              </p>
+              
+              <Tabs defaultValue="upload" className="w-full">
+                <TabsList className="grid w-full grid-cols-1">
+                  <TabsTrigger value="upload" data-testid="upload-tab" className="justify-start">
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload & Assess
+                  </TabsTrigger>
+                </TabsList>
+
+                <TabsContent value="upload" className="space-y-4 mt-4">
+                  <MediaUploader
+                    onFilesSelected={handleFilesSelected}
+                    maxFiles={5}
+                    disabled={isAssessing}
+                    acceptedTypes="both"
+                  />
+                  
+                  {selectedFiles.length > 0 && !assessmentResult && (
+                    <Button 
+                      onClick={handleStartAssessment}
+                      disabled={isAssessing}
+                      className="w-full"
+                      size="sm"
+                      data-testid="start-assessment"
+                    >
+                      {isAssessing ? (
+                        <>
+                          <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                          Analyzing...
+                        </>
+                      ) : (
+                        <>
+                          <Zap className="h-4 w-4 mr-2" />
+                          Start Assessment
+                        </>
+                      )}
+                    </Button>
+                  )}
+                </TabsContent>
+              </Tabs>
             </CardContent>
           </Card>
 
-          {assessmentResult && (
-            <AssessmentResult 
-              assessment={assessmentResult}
-              onRetry={handleRetryAssessment}
-              onExportReport={() => handleExportReport(assessmentResult)}
-            />
-          )}
-        </TabsContent>
-
-        <TabsContent value="search" className="space-y-6">
+          {/* Features Overview */}
           <Card>
-            <CardContent className="p-8 text-center">
-              <Search className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
-              <h3 className="text-xl font-semibold mb-2">Search Database</h3>
-              <p className="text-muted-foreground mb-4">
-                Search and browse previously assessed laptops. This feature will be available once you start creating assessment records.
+            <CardHeader>
+              <CardTitle>AI Capabilities</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-start gap-3">
+                <Zap className="h-5 w-5 mt-0.5 text-chart-2 flex-shrink-0" />
+                <div>
+                  <p className="font-medium text-sm">Advanced AI Analysis</p>
+                  <p className="text-xs text-muted-foreground">Damage detection, condition grading, and detailed assessments</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <MessageSquare className="h-5 w-5 mt-0.5 text-chart-1 flex-shrink-0" />
+                <div>
+                  <p className="font-medium text-sm">Natural Conversation</p>
+                  <p className="text-xs text-muted-foreground">Ask questions, get explanations, and receive guidance</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <Database className="h-5 w-5 mt-0.5 text-chart-3 flex-shrink-0" />
+                <div>
+                  <p className="font-medium text-sm">Assessment History</p>
+                  <p className="text-xs text-muted-foreground">Track and compare previous diagnoses</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          {/* Search Option */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Search className="h-5 w-5" />
+                Search Records
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-sm text-muted-foreground mb-3">
+                Browse assessment history and search previous diagnostic records.
               </p>
-              <Button variant="outline" disabled>
-                Browse Assessment Records
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full" 
+                asChild
+                data-testid="link-search-records"
+              >
+                <Link href="/search">
+                  <Search className="h-4 w-4 mr-2" />
+                  Browse Records
+                </Link>
               </Button>
             </CardContent>
           </Card>
-        </TabsContent>
-      </Tabs>
+        </div>
+      </div>
+
+      {/* Assessment Results */}
+      {assessmentResult && (
+        <div className="mt-8">
+          <AssessmentResult 
+            assessment={assessmentResult}
+            onRetry={handleRetryAssessment}
+            onExportReport={() => handleExportReport(assessmentResult)}
+          />
+        </div>
+      )}
     </div>
   );
 }
