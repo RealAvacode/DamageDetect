@@ -8,6 +8,7 @@ import AssessmentResult, { AssessmentData } from "@/components/AssessmentResult"
 import DiagnosticChatbot from "@/components/DiagnosticChatbot";
 import { Upload, Zap, Database, Search, MessageSquare, Bot } from "lucide-react";
 import { Link } from "wouter";
+import { toast } from "@/hooks/use-toast";
 
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
@@ -41,32 +42,50 @@ export default function Home() {
       }
 
       const result = await response.json();
-      
-      if (result.success) {
-        // Determine if this was a video or image assessment
-        const fileType = selectedFiles[0].type;
-        const isVideo = fileType.startsWith('video/');
-        
-        const assessmentData: AssessmentData = {
-          grade: result.assessment.grade,
-          confidence: result.assessment.confidence,
-          damageTypes: result.assessment.damageTypes || [],
-          overallCondition: result.assessment.damageDescription || result.overallCondition,
-          detailedFindings: result.assessment.detailedFindings || result.detailedFindings || [],
-          processingTime: result.assessment.processingTime,
-          mediaUrl: URL.createObjectURL(selectedFiles[0]),
-          mediaType: isVideo ? 'video' : 'image',
-          videoMetadata: result.assessment.videoMetadata
-        };
-        
-        setAssessmentResult(assessmentData);
-      } else {
-        throw new Error('Assessment failed');
+
+      if (!result.success) {
+        throw new Error(result.message || 'Assessment failed');
       }
+
+      const resultEntries = Array.isArray(result.results) ? result.results : [];
+      const successfulEntry = resultEntries.find((entry: any) => entry?.success && entry?.assessment);
+
+      if (!successfulEntry) {
+        throw new Error('Assessment failed for all uploaded files.');
+      }
+
+      const sourceFile = selectedFiles.find(file => file.name === successfulEntry.originalFileName) || selectedFiles[0];
+      const assessment = successfulEntry.assessment;
+
+      if (!sourceFile || !assessment) {
+        throw new Error('Assessment response was incomplete.');
+      }
+
+      // Determine if this was a video or image assessment
+      const fileType = sourceFile.type;
+      const isVideo = fileType.startsWith('video/');
+
+      const assessmentData: AssessmentData = {
+        grade: assessment.grade,
+        confidence: assessment.confidence,
+        damageTypes: assessment.damageTypes || [],
+        overallCondition: assessment.damageDescription || assessment.overallCondition,
+        detailedFindings: assessment.detailedFindings || [],
+        processingTime: assessment.processingTime,
+        mediaUrl: URL.createObjectURL(sourceFile),
+        mediaType: isVideo ? 'video' : 'image',
+        videoMetadata: assessment.videoMetadata
+      };
+
+      setAssessmentResult(assessmentData);
     } catch (error) {
       console.error('Assessment error:', error);
-      // Show error to user - for now just log, but could add toast notification
-      alert(`Assessment failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      const description = error instanceof Error ? error.message : 'Unknown error';
+      toast({
+        title: 'Assessment failed',
+        description,
+        variant: 'destructive'
+      });
     } finally {
       setIsAssessing(false);
     }
@@ -285,7 +304,11 @@ export default function Home() {
 
     } catch (error) {
       console.error('Error generating PDF:', error);
-      alert('Failed to generate PDF report. Please try again.');
+      toast({
+        title: 'Export failed',
+        description: 'Failed to generate PDF report. Please try again.',
+        variant: 'destructive'
+      });
     }
   };
 
