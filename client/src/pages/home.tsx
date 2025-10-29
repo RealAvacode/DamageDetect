@@ -12,17 +12,18 @@ import { Link } from "wouter";
 export default function Home() {
   const [selectedFiles, setSelectedFiles] = useState<File[]>([]);
   const [isAssessing, setIsAssessing] = useState(false);
-  const [assessmentResult, setAssessmentResult] = useState<AssessmentData | null>(null);
+  const [assessmentResults, setAssessmentResults] = useState<AssessmentData[]>([]);
 
   const handleFilesSelected = (files: File[]) => {
     setSelectedFiles(files);
-    setAssessmentResult(null);
+    setAssessmentResults([]);
   };
 
   const handleStartAssessment = async () => {
     if (selectedFiles.length === 0) return;
     
     setIsAssessing(true);
+    setAssessmentResults([]);
     
     try {
       const formData = new FormData();
@@ -42,27 +43,82 @@ export default function Home() {
 
       const result = await response.json();
       
-      if (result.success) {
-        // Determine if this was a video or image assessment
-        const fileType = selectedFiles[0].type;
-        const isVideo = fileType.startsWith('video/');
-        
-        const assessmentData: AssessmentData = {
-          grade: result.assessment.grade,
-          confidence: result.assessment.confidence,
-          damageTypes: result.assessment.damageTypes || [],
-          overallCondition: result.assessment.damageDescription || result.overallCondition,
-          detailedFindings: result.assessment.detailedFindings || result.detailedFindings || [],
-          processingTime: result.assessment.processingTime,
-          mediaUrl: URL.createObjectURL(selectedFiles[0]),
-          mediaType: isVideo ? 'video' : 'image',
-          videoMetadata: result.assessment.videoMetadata
-        };
-        
-        setAssessmentResult(assessmentData);
-      } else {
+      if (!result.success) {
         throw new Error('Assessment failed');
       }
+
+      const isImageFile = (file: File) =>
+        file.type.startsWith('image/') ||
+        (file.type === 'application/octet-stream' && file.name.match(/\.(heic|heif)$/i));
+
+      const isVideoFile = (file: File) => file.type.startsWith('video/');
+
+      const imageFiles = selectedFiles.filter(isImageFile);
+      const videoFiles = selectedFiles.filter(isVideoFile);
+
+      const successAssessments: AssessmentData[] = [];
+
+      const imageBatchResult = result.results?.find((entry: any) => entry.type === 'image-batch' && entry.success);
+      if (imageBatchResult?.assessment) {
+        const analyses = (imageBatchResult.assessment.imageAnalyses || []).map((analysis: any) => {
+          const fileIndex = analysis.imageIndex ? analysis.imageIndex - 1 : 0;
+          const matchingFile = imageFiles[fileIndex] || imageFiles.find(file => file.name === analysis.originalFileName);
+          return {
+            imageIndex: analysis.imageIndex,
+            summary: analysis.summary,
+            damageTypes: analysis.damageTypes || [],
+            detailedFindings: analysis.detailedFindings || [],
+            originalFileName: matchingFile?.name || analysis.originalFileName,
+            mediaUrl: matchingFile ? URL.createObjectURL(matchingFile) : undefined
+          };
+        });
+
+        successAssessments.push({
+          grade: imageBatchResult.assessment.grade,
+          confidence: imageBatchResult.assessment.confidence,
+          damageTypes: imageBatchResult.assessment.damageTypes || [],
+          overallCondition: imageBatchResult.assessment.damageDescription || imageBatchResult.assessment.overallCondition,
+          detailedFindings: imageBatchResult.assessment.detailedFindings || [],
+          processingTime: imageBatchResult.assessment.processingTime,
+          mediaType: 'image',
+          mediaAnalyses: analyses
+        });
+      }
+
+      const videoResults = result.results?.filter((entry: any) => entry.type === 'video' && entry.success) || [];
+      const videoFileMap = new Map<string, File>();
+      videoFiles.forEach(file => {
+        videoFileMap.set(file.name, file);
+      });
+
+      videoResults.forEach((videoResult: any) => {
+        const matchingFile = videoFileMap.get(videoResult.originalFileName);
+        successAssessments.push({
+          grade: videoResult.assessment.grade,
+          confidence: videoResult.assessment.confidence,
+          damageTypes: videoResult.assessment.damageTypes || [],
+          overallCondition: videoResult.assessment.damageDescription || videoResult.assessment.overallCondition,
+          detailedFindings: videoResult.assessment.detailedFindings || [],
+          processingTime: videoResult.assessment.processingTime,
+          mediaUrl: matchingFile ? URL.createObjectURL(matchingFile) : undefined,
+          mediaType: 'video',
+          videoMetadata: videoResult.assessment.videoMetadata
+        });
+      });
+
+      if (result.results) {
+        const failedEntries = result.results.filter((entry: any) => entry.success === false);
+        if (failedEntries.length > 0) {
+          const errorMessages = failedEntries.map((entry: any) => `${entry.originalFileName || 'File'}: ${entry.error || 'Unknown error'}`).join('\n');
+          alert(`Some files could not be analyzed:\n${errorMessages}`);
+        }
+      }
+
+      if (successAssessments.length === 0) {
+        throw new Error('Assessment failed');
+      }
+
+      setAssessmentResults(successAssessments);
     } catch (error) {
       console.error('Assessment error:', error);
       // Show error to user - for now just log, but could add toast notification
@@ -73,7 +129,7 @@ export default function Home() {
   };
 
   const handleRetryAssessment = () => {
-    setAssessmentResult(null);
+    setAssessmentResults([]);
     handleStartAssessment();
   };
 
@@ -130,21 +186,112 @@ export default function Home() {
         yPosition += 15;
       }
 
-      // Add laptop image/video frame if available
-      if (assessment.mediaUrl) {
+      if (assessment.mediaAnalyses && assessment.mediaAnalyses.length > 0) {
+        doc.setFontSize(16);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Individual Image Analyses', 20, yPosition);
+        yPosition += 10;
+
+        for (const analysis of assessment.mediaAnalyses) {
+          if (yPosition > pageHeight - 40) {
+            doc.addPage();
+            yPosition = 20;
+          }
+
+          doc.setFontSize(12);
+          doc.setFont('helvetica', 'bold');
+          doc.text(`Image ${analysis.imageIndex}${analysis.originalFileName ? ` - ${analysis.originalFileName}` : ''}`, 20, yPosition);
+          yPosition += 8;
+
+          if (analysis.mediaUrl) {
+            try {
+              const canvas = document.createElement('canvas');
+              const ctx = canvas.getContext('2d');
+              const img = new Image();
+
+              await new Promise((resolve, reject) => {
+                img.onload = () => {
+                  const maxWidth = 120;
+                  const maxHeight = 80;
+                  let { width, height } = img;
+
+                  if (width > maxWidth) {
+                    height = (height * maxWidth) / width;
+                    width = maxWidth;
+                  }
+                  if (height > maxHeight) {
+                    width = (width * maxHeight) / height;
+                    height = maxHeight;
+                  }
+
+                  canvas.width = width;
+                  canvas.height = height;
+                  ctx?.drawImage(img, 0, 0, width, height);
+
+                  const imgData = canvas.toDataURL('image/jpeg', 0.8);
+                  doc.addImage(imgData, 'JPEG', 20, yPosition, width, height);
+                  resolve(null);
+                };
+                img.onerror = reject;
+                img.src = analysis.mediaUrl!;
+              });
+
+              yPosition += 85;
+            } catch (error) {
+              console.warn('Could not add image to PDF:', error);
+            }
+          }
+
+          doc.setFontSize(11);
+          doc.setFont('helvetica', 'normal');
+          yPosition = addWrappedText(analysis.summary, 20, yPosition, pageWidth - 40, 11);
+          yPosition += 6;
+
+          if (analysis.damageTypes.length > 0) {
+            doc.setFont('helvetica', 'bold');
+            doc.text('Damage Types:', 20, yPosition);
+            yPosition += 6;
+            doc.setFont('helvetica', 'normal');
+            analysis.damageTypes.forEach(type => {
+              doc.text(`• ${type}`, 25, yPosition);
+              yPosition += 5;
+            });
+            yPosition += 4;
+          }
+
+          if (analysis.detailedFindings.length > 0) {
+            doc.setFont('helvetica', 'bold');
+            doc.text('Detailed Findings:', 20, yPosition);
+            yPosition += 6;
+
+            doc.setFont('helvetica', 'normal');
+            analysis.detailedFindings.forEach((finding, index) => {
+              if (yPosition > pageHeight - 40) {
+                doc.addPage();
+                yPosition = 20;
+              }
+
+              doc.text(`${index + 1}. ${finding.category} (${finding.severity})`, 25, yPosition);
+              yPosition += 6;
+              yPosition = addWrappedText(finding.description, 30, yPosition, pageWidth - 50, 10);
+              yPosition += 4;
+            });
+          }
+
+          yPosition += 10;
+        }
+      } else if (assessment.mediaUrl) {
         try {
-          // Create a canvas to resize and process the image
           const canvas = document.createElement('canvas');
           const ctx = canvas.getContext('2d');
           const img = new Image();
-          
+
           await new Promise((resolve, reject) => {
             img.onload = () => {
-              // Calculate dimensions to fit within PDF
               const maxWidth = 120;
               const maxHeight = 80;
               let { width, height } = img;
-              
+
               if (width > maxWidth) {
                 height = (height * maxWidth) / width;
                 width = maxWidth;
@@ -157,8 +304,7 @@ export default function Home() {
               canvas.width = width;
               canvas.height = height;
               ctx?.drawImage(img, 0, 0, width, height);
-              
-              // Add image to PDF
+
               const imgData = canvas.toDataURL('image/jpeg', 0.8);
               doc.addImage(imgData, 'JPEG', (pageWidth - width) / 2, yPosition, width, height);
               resolve(null);
@@ -166,7 +312,7 @@ export default function Home() {
             img.onerror = reject;
             img.src = assessment.mediaUrl;
           });
-          
+
           yPosition += 90;
         } catch (error) {
           console.warn('Could not add image to PDF:', error);
@@ -174,6 +320,11 @@ export default function Home() {
       }
 
       // Assessment Summary
+      if (yPosition > pageHeight - 60) {
+        doc.addPage();
+        yPosition = 20;
+      }
+
       doc.setFontSize(16);
       doc.setFont('helvetica', 'bold');
       doc.text('Assessment Summary', 20, yPosition);
@@ -387,7 +538,7 @@ export default function Home() {
                     acceptedTypes="both"
                   />
                   
-                  {selectedFiles.length > 0 && !assessmentResult && (
+                  {selectedFiles.length > 0 && assessmentResults.length === 0 && (
                     <Button 
                       onClick={handleStartAssessment}
                       disabled={isAssessing}
@@ -473,13 +624,16 @@ export default function Home() {
       </div>
 
       {/* Assessment Results */}
-      {assessmentResult && (
-        <div className="mt-8">
-          <AssessmentResult 
-            assessment={assessmentResult}
-            onRetry={handleRetryAssessment}
-            onExportReport={() => handleExportReport(assessmentResult)}
-          />
+      {assessmentResults.length > 0 && (
+        <div className="mt-8 space-y-8">
+          {assessmentResults.map((assessment, index) => (
+            <AssessmentResult
+              key={index}
+              assessment={assessment}
+              onRetry={handleRetryAssessment}
+              onExportReport={() => handleExportReport(assessment)}
+            />
+          ))}
         </div>
       )}
     </div>
