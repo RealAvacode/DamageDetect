@@ -98,6 +98,18 @@ export interface AssessmentData {
   processingTime: number;
   mediaUrl: string;
   mediaType?: 'image' | 'video';
+  imageAnalyses?: {
+    imageIndex: number;
+    summary: string;
+    damageTypes: string[];
+    detailedFindings: {
+      category: string;
+      severity: "Low" | "Medium" | "High";
+      description: string;
+    }[];
+    originalFileName?: string;
+    mediaUrl?: string;
+  }[];
   videoMetadata?: {
     duration: number;
     width: number;

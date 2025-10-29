@@ -1,5 +1,4 @@
 import OpenAI from 'openai';
-import { InsertAssessment } from '@shared/schema';
 import { extractVideoFrames, checkFFmpegAvailability, VideoFrameExtractionResult } from './video-utils';
 import { z } from 'zod';
 import sharp from 'sharp';
@@ -62,70 +61,82 @@ export interface AIAssessmentResult {
   };
 }
 
-export async function assessLaptopDamage(imageBase64: string, mimeType: string = 'image/jpeg'): Promise<AIAssessmentResult> {
-  const startTime = Date.now();
+export interface ImageAnalysisDetail {
+  imageIndex: number;
+  summary: string;
+  damageTypes: string[];
+  detailedFindings: DetailedFinding[];
+  originalFileName?: string;
+}
 
-  // Debug logging to understand what's being sent to OpenAI
-  console.log('Assessment request details:');
-  console.log('- MIME type:', mimeType);
-  console.log('- Base64 length:', imageBase64.length);
-  console.log('- Base64 sample (first 32 chars):', imageBase64.substring(0, 32));
-  console.log('- Data URL header:', `data:${mimeType};base64,`);
+export interface MultiImageAssessmentResult {
+  grade: 'A' | 'B' | 'C' | 'D';
+  confidence: number;
+  overallCondition: string;
+  damageTypes: string[];
+  detailedFindings: DetailedFinding[];
+  imageAnalyses: ImageAnalysisDetail[];
+  processingTime: number;
+}
 
+interface PreparedImage {
+  processedBase64: string;
+  processedMimeType: string;
+}
+
+const multiImageAnalysisSchema = z.object({
+  grade: z.enum(['A', 'B', 'C', 'D']),
+  confidence: z.number().min(0).max(1),
+  overallCondition: z.string(),
+  damageTypes: z.array(z.string()),
+  detailedFindings: z.array(detailedFindingSchema),
+  imageAnalyses: z.array(z.object({
+    imageIndex: z.number().int().min(1),
+    summary: z.string(),
+    damageTypes: z.array(z.string()),
+    detailedFindings: z.array(detailedFindingSchema),
+    originalFileName: z.string().optional()
+  }))
+});
+
+async function prepareImageForVision(imageBase64: string, mimeType: string = 'image/jpeg'): Promise<PreparedImage> {
   // Validate image format and size
   if (!imageBase64 || imageBase64.length < 50) {
     throw new Error('Image data is too small or corrupted. Please upload a clear, high-resolution image of the laptop.');
   }
 
-  // Clean up base64 string - remove any whitespace or invalid characters
   const cleanBase64 = imageBase64.replace(/[^A-Za-z0-9+/=]/g, '');
 
-  // Validate base64 format
   if (cleanBase64.length % 4 !== 0) {
     throw new Error('Invalid image data format. Please try uploading a different image.');
   }
 
-  // Handle all image formats - convert to JPEG for OpenAI compatibility
-  let processedImageBase64 = cleanBase64;
-  let processedMimeType = mimeType;
-
-  // Ensure MIME type is supported by OpenAI Vision API (after conversion)
-  const openAISupportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp'];
-
-  // We accept HEIC but convert it to JPEG, so check original format
   const originalSupportedTypes = ['image/jpeg', 'image/jpg', 'image/png', 'image/gif', 'image/webp', 'image/heic', 'image/heif'];
   if (!originalSupportedTypes.includes(mimeType.toLowerCase())) {
     throw new Error(`Image format '${mimeType}' is not supported by the AI vision system. Please upload a JPEG, PNG, GIF, WebP, or HEIC image.`);
   }
 
-  // Validate and potentially reprocess image with Sharp to ensure it's valid
   try {
-    const imageBuffer = Buffer.from(processedImageBase64, 'base64');
-    const imageInfo = await sharp(imageBuffer).metadata();
+    const imageBuffer = Buffer.from(cleanBase64, 'base64');
+    await sharp(imageBuffer).metadata();
+    const reprocessedBuffer = await sharp(imageBuffer)
+      .jpeg({ quality: 95, mozjpeg: true })
+      .toBuffer();
 
-    console.log('Image validation:', {
-      width: imageInfo.width,
-      height: imageInfo.height,
-      format: imageInfo.format,
-      size: imageBuffer.length
-    });
-
-    // Convert ALL images to JPEG for OpenAI compatibility
-    if (imageInfo.format) {
-      // Convert to high-quality JPEG to ensure OpenAI compatibility
-      const reprocessedBuffer = await sharp(imageBuffer)
-        .jpeg({ quality: 95, mozjpeg: true })
-        .toBuffer();
-
-      processedImageBase64 = reprocessedBuffer.toString('base64');
-      processedMimeType = 'image/jpeg';
-
-      console.log(`Image converted from ${imageInfo.format} to JPEG for OpenAI compatibility, new size:`, processedImageBase64.length);
-    }
+    return {
+      processedBase64: reprocessedBuffer.toString('base64'),
+      processedMimeType: 'image/jpeg'
+    };
   } catch (sharpError) {
     console.error('Image validation failed:', sharpError);
     throw new Error('Invalid or corrupted image file. Please upload a different image.');
   }
+}
+
+export async function assessLaptopDamage(imageBase64: string, mimeType: string = 'image/jpeg'): Promise<AIAssessmentResult> {
+  const startTime = Date.now();
+
+  const { processedBase64, processedMimeType } = await prepareImageForVision(imageBase64, mimeType);
 
   try {
     const response = await openai.chat.completions.create({
@@ -172,7 +183,7 @@ Be thorough but concise. Provide realistic confidence scores based on image qual
             {
               type: "image_url",
               image_url: {
-                url: `data:${processedMimeType};base64,${processedImageBase64}`
+                url: `data:${processedMimeType};base64,${processedBase64}`
               }
             }
           ]
@@ -184,16 +195,6 @@ Be thorough but concise. Provide realistic confidence scores based on image qual
     });
 
     const processingTime = (Date.now() - startTime) / 1000;
-
-    // Enhanced logging to debug OpenAI response issues
-    console.log('OpenAI response details:', {
-      choices: response.choices?.length || 0,
-      firstChoice: response.choices?.[0],
-      message: response.choices?.[0]?.message,
-      content: response.choices?.[0]?.message?.content,
-      finishReason: response.choices?.[0]?.finish_reason,
-      usage: response.usage
-    });
 
     const content = response.choices?.[0]?.message?.content;
 
@@ -234,6 +235,124 @@ Be thorough but concise. Provide realistic confidence scores based on image qual
     }
 
     throw new Error(`AI assessment failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
+}
+
+export async function assessLaptopDamageBatch(images: { base64: string; mimeType: string; originalFileName?: string }[]): Promise<MultiImageAssessmentResult> {
+  if (!images || images.length === 0) {
+    throw new Error('No images provided for assessment');
+  }
+
+  const startTime = Date.now();
+
+  const processedImages: { processedBase64: string; processedMimeType: string; originalFileName?: string }[] = [];
+
+  for (const image of images) {
+    const prepared = await prepareImageForVision(image.base64, image.mimeType);
+    processedImages.push({
+      processedBase64: prepared.processedBase64,
+      processedMimeType: prepared.processedMimeType,
+      originalFileName: image.originalFileName
+    });
+  }
+
+  const analysisInstruction = `You are a professional laptop condition assessor. You will receive ${processedImages.length} laptop photo${processedImages.length > 1 ? 's' : ''}.
+
+For each photo, provide a thorough analysis BEFORE giving the overall grade. Return a JSON object with this exact structure:
+{
+  "grade": "A" | "B" | "C" | "D",
+  "confidence": 0.0 to 1.0,
+  "overallCondition": "Overall summary after reviewing every image",
+  "damageTypes": ["array", "of", "damage", "types"],
+  "detailedFindings": [
+    {
+      "category": "Display Lid" | "Base/Keyboard Area" | "Screen" | "Ports/Connectors" | "Hinges" | "Overall Structure",
+      "severity": "Low" | "Medium" | "High",
+      "description": "Combined description across all images"
+    }
+  ],
+  "imageAnalyses": [
+    {
+      "imageIndex": 1,
+      "summary": "Summary for the specific photo",
+      "damageTypes": ["damage", "types", "seen", "in", "this", "image"],
+      "detailedFindings": [
+        {
+          "category": "Display Lid" | "Base/Keyboard Area" | "Screen" | "Ports/Connectors" | "Hinges" | "Overall Structure",
+          "severity": "Low" | "Medium" | "High",
+          "description": "Observation specific to this image"
+        }
+      ]
+    }
+  ]
+}
+
+Discuss every photo individually within imageAnalyses before summarizing and grading the overall condition.`;
+
+  try {
+    const response = await openai.chat.completions.create({
+      model: 'gpt-4o',
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: analysisInstruction },
+            ...processedImages.flatMap((image, index) => [
+              {
+                type: 'text' as const,
+                text: `Image ${index + 1}${image.originalFileName ? ` (${image.originalFileName})` : ''}`
+              },
+              {
+                type: 'image_url' as const,
+                image_url: {
+                  url: `data:${image.processedMimeType};base64,${image.processedBase64}`,
+                  detail: 'auto'
+                }
+              }
+            ])
+          ]
+        }
+      ],
+      max_completion_tokens: 1200,
+      temperature: 0.1,
+      response_format: { type: 'json_object' }
+    });
+
+    const processingTime = (Date.now() - startTime) / 1000;
+
+    const content = response.choices?.[0]?.message?.content;
+    if (!content) {
+      throw new Error('No response content from OpenAI when processing multiple images');
+    }
+
+    const parsed = JSON.parse(content);
+    const validated = multiImageAnalysisSchema.parse(parsed);
+
+    const normalizedImageAnalyses: ImageAnalysisDetail[] = validated.imageAnalyses.map((analysis) => ({
+      ...analysis,
+      originalFileName:
+        analysis.originalFileName ||
+        processedImages[analysis.imageIndex - 1]?.originalFileName ||
+        undefined,
+    }));
+
+    return {
+      ...validated,
+      imageAnalyses: normalizedImageAnalyses,
+      processingTime
+    };
+  } catch (error: any) {
+    console.error('Multi-image assessment error:', error);
+
+    if (error?.code === 'image_parse_error') {
+      throw new Error('One or more images could not be processed by AI. Please ensure each photo is clear, in focus, and saved in JPEG or PNG format.');
+    }
+
+    if (error?.message?.includes('unsupported image') || error?.message?.includes('invalid image')) {
+      throw new Error('One or more images are using an unsupported format. Please upload JPEG, PNG, GIF, WebP, or HEIC photos.');
+    }
+
+    throw new Error(`AI assessment failed for multiple images: ${error instanceof Error ? error.message : 'Unknown error'}`);
   }
 }
 
