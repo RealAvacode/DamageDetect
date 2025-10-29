@@ -4,6 +4,25 @@
 
 This is an AI-powered laptop damage assessment system that uses OpenAI's GPT-4 Vision API to analyze laptop images and provide automated quality grading. The application allows users to upload laptop images, receive detailed damage assessments with confidence scores, and manage a database of evaluated equipment. The system is designed for equipment assessment professionals, refurbishers, and organizations needing standardized laptop condition evaluation.
 
+## Publishing to GitHub for Replit
+
+To preview this app on Replit you first need the code available in a GitHub repository. From a local terminal inside this project:
+
+1. Create a GitHub repository and copy its HTTPS or SSH URL.
+2. Add the remote to this project, replacing the placeholder with your URL:
+   ```bash
+   git remote add origin https://github.com/<username>/<repo>.git
+   ```
+3. Confirm the remote was added correctly:
+   ```bash
+   git remote -v
+   ```
+4. Push the current branch (named `work`) to GitHub and set it as the upstream:
+   ```bash
+   git push -u origin work
+   ```
+5. Authenticate with GitHub when prompted. Once the push succeeds, Replit can import the repository and run the app.
+
 ## User Preferences
 
 Preferred communication style: Simple, everyday language.
