@@ -164,19 +164,18 @@ Return your assessment as a JSON object with this exact structure:
   ]
 }
 
-Grading Scale:
-- Grade A (90-100%): Excellent condition, minimal wear, no functional damage
-- Grade B (75-89%): Good condition, minor cosmetic wear, fully functional
-- Grade C (60-74%): Fair condition, moderate wear/damage, may have minor functional issues
-- Grade D (Below 60%): Poor condition, significant damage, major functional concerns
+Grading Scale (Based on Visual Assessment):
+- Grade A (Excellent): Excellent condition on all sides (top, bottom, left, right, front, back). Excellent screen with no visible damage. Good hinges. Complete keyboard with no missing keys. Like new appearance.
+- Grade B (Very Good to Good): Fully functional appearance. Excellent to moderate scratches/dents on chassis. Excellent to moderate screen condition. Good hinges visible. Complete keyboard with no missing keys. Minor to moderate cosmetic wear acceptable.
+- Grade C (Fair): Moderate to severe cosmetic wear acceptable. Any screen condition (excellent/minor/moderate/severe). Hinges may appear loose but present. Complete keyboard. Heavy cosmetic wear or visible flaws, but structurally intact.
+- Grade D (Poor / Parts Only): Severe damage including cracks on chassis or screen. Bad or broken hinges visible. Missing keyboard keys. Major structural damage. Non-functional appearance or parts-only condition.
 
-Focus on:
-- Screen condition (cracks, dead pixels, backlight issues)
-- Keyboard and trackpad wear
-- Case/lid scratches, dents, cracks
-- Hinge condition and alignment
-- Port condition
-- Overall structural integrity
+Focus on Visual Assessment:
+- Chassis condition: Assess scratches and dents on all visible sides (top, bottom, left, right, front, back)
+- Screen condition: Look for cracks, dead pixels, lines, scratches, or other visible damage
+- Hinges: Check if hinges appear intact, loose, or broken/damaged
+- Keyboard: Verify all keys are present and intact (look for missing keys)
+- Overall structural integrity: Assess for cracks, major dents, or broken components
 
 Be thorough but concise. Provide realistic confidence scores based on image quality and visibility of potential issues.`
             },

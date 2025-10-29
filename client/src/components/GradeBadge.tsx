@@ -13,22 +13,22 @@ const gradeConfig = {
   A: {
     label: "Grade A - Excellent",
     className: "bg-chart-1 text-white hover:bg-chart-1/90",
-    description: "Minimal to no visible damage"
+    description: "Excellent condition, like new, fully functional appearance"
   },
   B: {
-    label: "Grade B - Good", 
+    label: "Grade B - Very Good to Good", 
     className: "bg-chart-2 text-black hover:bg-chart-2/90",
-    description: "Light wear, minor scratches"
+    description: "Minor to moderate cosmetic wear, fully functional appearance"
   },
   C: {
     label: "Grade C - Fair",
     className: "bg-chart-2 text-black hover:bg-chart-2/90", 
-    description: "Moderate wear, visible damage"
+    description: "Moderate to severe cosmetic wear, structurally intact"
   },
   D: {
-    label: "Grade D - Poor",
+    label: "Grade D - Poor / Parts Only",
     className: "bg-chart-3 text-white hover:bg-chart-3/90",
-    description: "Heavy damage, significant wear"
+    description: "Severe damage, cracks, missing keys, or parts-only condition"
   },
   PENDING: {
     label: "Processing...",
